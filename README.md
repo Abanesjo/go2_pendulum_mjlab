@@ -47,37 +47,24 @@ export WARP_CACHE_PATH=/tmp/warp
 
 ## Train
 
-Train from scratch:
+Example from-scratch training command with all wrapper arguments shown:
 
 ```bash
 cd ~/Documents/mjlab_projects
 conda activate mujoco
 
-python go2_pendulum_mjlab/scripts/train.py
-```
-
-Resume or further-train from a checkpoint:
-
-```bash
 python go2_pendulum_mjlab/scripts/train.py \
-  --resume-file /path/to/model_1000.pt
-```
-
-Record videos during training:
-
-```bash
-python go2_pendulum_mjlab/scripts/train.py \
-  --video true \
+  --device cuda:0 \
+  --resume-file None \
+  --video false \
   --video-length 200 \
-  --video-interval 2000
-```
-
-Small smoke run:
-
-```bash
-python go2_pendulum_mjlab/scripts/train.py \
-  --env.scene.num-envs 64 \
-  --agent.max-iterations 5
+  --video-interval 2000 \
+  --gpu-ids 0 \
+  --env.scene.num-envs 4096 \
+  --env.seed 42 \
+  --agent.seed 42 \
+  --agent.max-iterations 1500 \
+  --agent.run-name scratch_go2_pendulum
 ```
 
 ### `train.py` arguments
@@ -93,67 +80,30 @@ python go2_pendulum_mjlab/scripts/train.py \
 | `--env.*` | task config | Any nested field on `ManagerBasedRlEnvCfg`, for example `--env.scene.num-envs 1024`. |
 | `--agent.*` | PPO config | Any nested field on `RslRlBaseRunnerCfg`, for example `--agent.max-iterations 1500`. |
 
-To see the full generated list of nested `--env.*` and `--agent.*` options:
+Set `--resume-file /path/to/model_1000.pt` to continue training from a checkpoint. To see the full generated list of nested `--env.*` and `--agent.*` options:
 
 ```bash
 python go2_pendulum_mjlab/scripts/train.py --help
 ```
 
-Common train overrides:
-
-```bash
-python go2_pendulum_mjlab/scripts/train.py \
-  --env.scene.num-envs 4096 \
-  --env.seed 42 \
-  --agent.seed 42 \
-  --agent.max-iterations 1500 \
-  --agent.run-name scratch_go2_pendulum
-```
-
 ## Play
 
-Play a trained checkpoint:
+Example playback/export command with all wrapper arguments shown:
 
 ```bash
 cd ~/Documents/mjlab_projects
 conda activate mujoco
 
 python go2_pendulum_mjlab/scripts/play.py \
-  --checkpoint-file /path/to/model_1000.pt
-```
-
-Use the Viser web viewer explicitly:
-
-```bash
-python go2_pendulum_mjlab/scripts/play.py \
   --checkpoint-file /path/to/model_1000.pt \
-  --viewer viser
+  --agent trained \
+  --num-envs 1 \
+  --device cuda:0 \
+  --viewer auto \
+  --export false
 ```
 
-Use the native MuJoCo viewer explicitly:
-
-```bash
-python go2_pendulum_mjlab/scripts/play.py \
-  --checkpoint-file /path/to/model_1000.pt \
-  --viewer native
-```
-
-Run dummy policies:
-
-```bash
-python go2_pendulum_mjlab/scripts/play.py --agent zero
-python go2_pendulum_mjlab/scripts/play.py --agent random
-```
-
-Export a trained checkpoint for deployment or `go2_mujoco` testing:
-
-```bash
-python go2_pendulum_mjlab/scripts/play.py \
-  --checkpoint-file /path/to/model_1000.pt \
-  --export true
-```
-
-This writes:
+Set `--agent zero` or `--agent random` for dummy policies. Set `--viewer native` or `--viewer viser` to force a viewer. Set `--export true` to write:
 
 ```text
 policy.pt
@@ -192,4 +142,3 @@ Training videos, when enabled, are written under:
 ```text
 logs/rsl_rl/go2_pendulum_mjlab/<timestamp>/videos/train/
 ```
-

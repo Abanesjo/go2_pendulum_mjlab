@@ -17,7 +17,7 @@ def isaac_difficulty(
   position_termination_name: str,
   push_event_name: str | None = None,
   total_steps: int = 25_000 * 32,
-  override_level: int = -1,
+  override_level: int = 5,
 ) -> dict[str, torch.Tensor]:
   del env_ids
   if override_level >= 1:

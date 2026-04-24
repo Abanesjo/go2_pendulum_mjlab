@@ -1,0 +1,5 @@
+Metadata-Version: 2.4
+Name: go2-pendulum-mjlab
+Version: 0.1.0
+Summary: IsaacLab-compatible Go2 pendulum MJLab task
+Requires-Python: >=3.11

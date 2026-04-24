@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "go2-pendulum-mjlab"
+version = "0.1.0"
+description = "IsaacLab-compatible Go2 pendulum MJLab task"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+go2_pendulum_mjlab = ["assets/go2_pendulum/**/*.xml", "assets/go2_pendulum/assets/*.obj"]
+

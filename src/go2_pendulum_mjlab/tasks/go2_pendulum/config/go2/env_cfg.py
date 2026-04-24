@@ -152,7 +152,7 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
       dist_range=preset["goal_dist"],
       bearing_range=preset["goal_bearing"],
       yaw_range=preset["goal_yaw"],
-      debug_vis=False,
+      debug_vis=True,
     )
   }
 

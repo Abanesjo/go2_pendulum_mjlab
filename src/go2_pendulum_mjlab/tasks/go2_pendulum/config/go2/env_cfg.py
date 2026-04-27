@@ -419,7 +419,7 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
           "position_termination_name": "position_goal_violation",
           "push_event_name": "push_robot",
           "total_steps": 25_000 * 32,
-          "override_level": -1,
+          "override_level": 5,
         },
       )
     }

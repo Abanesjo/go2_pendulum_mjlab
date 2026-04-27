@@ -13,9 +13,9 @@ from go2_pendulum_mjlab.tasks.go2_pendulum.constants import DEFAULT_JOINT_POS, L
 
 ASSET_DIR = Path(__file__).resolve().parents[2] / "assets" / "go2_pendulum"
 GO2_PENDULUM_XML = ASSET_DIR / "go2_pendulum.xml"
-LEG_ARMATURE = 0.0
-LEG_FRICTIONLOSS = 0.0
-LEG_VISCOUS_DAMPING = 0.0
+LEG_ARMATURE = 0.01
+LEG_FRICTIONLOSS = 0.05
+LEG_VISCOUS_DAMPING = 0.02
 
 
 def get_spec() -> mujoco.MjSpec:

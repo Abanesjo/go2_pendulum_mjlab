@@ -8,7 +8,7 @@ from mjlab.rl import RslRlModelCfg, RslRlOnPolicyRunnerCfg, RslRlPpoAlgorithmCfg
 def go2_pendulum_mjlab_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
   return RslRlOnPolicyRunnerCfg(
     actor=RslRlModelCfg(
-      hidden_dims=(256, 256, 64),
+      hidden_dims=(512, 256, 128),
       activation="elu",
       obs_normalization=False,
       distribution_cfg={
@@ -18,7 +18,7 @@ def go2_pendulum_mjlab_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
       },
     ),
     critic=RslRlModelCfg(
-      hidden_dims=(256, 256, 64),
+      hidden_dims=(512, 256, 128),
       activation="elu",
       obs_normalization=False,
     ),
@@ -29,7 +29,7 @@ def go2_pendulum_mjlab_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
       entropy_coef=0.01,
       num_learning_epochs=5,
       num_mini_batches=4,
-      learning_rate=1.0e-3,
+      learning_rate=2.0e-4,
       schedule="adaptive",
       gamma=0.99,
       lam=0.95,
@@ -43,4 +43,3 @@ def go2_pendulum_mjlab_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
     num_steps_per_env=32,
     max_iterations=1500,
   )
-

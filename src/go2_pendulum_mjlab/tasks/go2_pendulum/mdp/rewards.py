@@ -185,11 +185,14 @@ def target_pos_acc_l2(env, action_name: str = "joint_pos") -> torch.Tensor:
 
 
 def target_delta_l2(env, action_name: str = "joint_pos") -> torch.Tensor:
-  return target_pos_rate_l2(env, action_name=action_name)
+  term = _ordered_pd_action_term(env, action_name)
+  return torch.sum(torch.square(term.target_pos - term.prev_target_pos), dim=1)
 
 
 def target_delta_delta_l2(env, action_name: str = "joint_pos") -> torch.Tensor:
-  return target_pos_acc_l2(env, action_name=action_name)
+  term = _ordered_pd_action_term(env, action_name)
+  delta_delta = term.target_pos - 2.0 * term.prev_target_pos + term.prev_prev_target_pos
+  return torch.sum(torch.square(delta_delta), dim=1)
 
 
 def joint_actuator_effort_l2(env, asset_cfg: SceneEntityCfg) -> torch.Tensor:
@@ -207,8 +210,8 @@ def torque_rate_l2(env, action_name: str = "joint_pos") -> torch.Tensor:
   for name in required:
     if not hasattr(term, name):
       raise TypeError(f"Action term '{action_name}' is missing '{name}'")
-  rate = (term.applied_torque - term.prev_applied_torque) / env.step_dt
-  return torch.sum(torch.square(rate), dim=1)
+  delta = term.applied_torque - term.prev_applied_torque
+  return torch.sum(torch.square(delta), dim=1)
 
 
 def applied_torque_rate_l2(env, action_name: str = "joint_pos") -> torch.Tensor:

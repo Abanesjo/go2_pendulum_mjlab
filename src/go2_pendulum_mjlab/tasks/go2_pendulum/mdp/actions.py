@@ -105,6 +105,10 @@ class OrderedGo2PdAction(ActionTerm):
     return self._raw_actions
 
   @property
+  def commanded_action(self) -> torch.Tensor:
+    return self._raw_actions
+
+  @property
   def applied_action(self) -> torch.Tensor:
     return self._applied_action
 

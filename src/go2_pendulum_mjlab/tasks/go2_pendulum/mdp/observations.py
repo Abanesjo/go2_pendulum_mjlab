@@ -162,6 +162,13 @@ def applied_last_action(env, action_name: str = "joint_pos") -> torch.Tensor:
   return term.applied_action
 
 
+def commanded_last_action(env, action_name: str = "joint_pos") -> torch.Tensor:
+  term = env.action_manager.get_term(action_name)
+  if not hasattr(term, "commanded_action"):
+    raise TypeError(f"Action term '{action_name}' does not expose commanded_action")
+  return term.commanded_action
+
+
 def clock_inputs(env) -> torch.Tensor:
   step = env.episode_length_buf.to(dtype=torch.float32) * env.step_dt * 3.0
   gait = torch.remainder(step, 1.0)

@@ -39,12 +39,12 @@ from go2_pendulum_mjlab.tasks.go2_pendulum.mdp import (
   applied_action_acc_l2,
   applied_action_l2,
   applied_action_rate_l2,
-  applied_last_action,
   ang_vel_xy_l2,
   balanced_movement,
   base_height_l2,
   body_contact_force,
   clock_inputs,
+  commanded_last_action,
   delayed_noisy_observation,
   early_termination,
   feet_air_time,
@@ -153,12 +153,16 @@ def _obs_terms(noisy: bool) -> dict[str, ObservationTermCfg]:
     base_ang_vel_term = _delayed_noisy_term(
       imu_ang_vel_b,
       dim=3,
+      delay_steps_range=PROPRIO_DELAY_STEPS_RANGE,
+      hold_prob=PROPRIO_OBS_HOLD_PROB,
       noise=BASE_ANG_VEL_NOISE_RAD_S,
       bias=BASE_ANG_VEL_BIAS_RAD_S,
     )
     projected_gravity_term = _delayed_noisy_term(
       projected_gravity_from_imu,
       dim=3,
+      delay_steps_range=PROPRIO_DELAY_STEPS_RANGE,
+      hold_prob=PROPRIO_OBS_HOLD_PROB,
       noise=PROJECTED_GRAVITY_COMPONENT_NOISE,
     )
     leg_joint_pos_term = _delayed_noisy_term(
@@ -219,7 +223,7 @@ def _obs_terms(noisy: bool) -> dict[str, ObservationTermCfg]:
     "pendulum_pos": pendulum_pos_term,
     "pendulum_vel": pendulum_vel_term,
     "last_action": ObservationTermCfg(
-      func=applied_last_action,
+      func=commanded_last_action,
       params={"action_name": "joint_pos"},
     ),
     "clock_inputs": ObservationTermCfg(func=clock_inputs),
@@ -403,12 +407,12 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     ),
     "target_pos_rate": RewardTermCfg(
       func=target_delta_l2,
-      weight=-1.0e-4,
+      weight=-0.05,
       params={"action_name": "joint_pos"},
     ),
     "target_pos_acc": RewardTermCfg(
       func=target_delta_delta_l2,
-      weight=-2.0e-8,
+      weight=-0.02,
       params={"action_name": "joint_pos"},
     ),
     "torque": RewardTermCfg(
@@ -418,7 +422,7 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     ),
     "torque_rate": RewardTermCfg(
       func=torque_rate_l2,
-      weight=-2.0e-6,
+      weight=-1.0e-4,
       params={"action_name": "joint_pos"},
     ),
     "orient": RewardTermCfg(func=flat_orientation_reward, weight=0.8, params={"std": 0.05}),
@@ -533,7 +537,7 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
           "position_termination_name": "position_goal_violation",
           "push_event_name": "push_robot",
           "total_steps": 25_000 * 32,
-          "override_level": 5,
+          "override_level": -1,
         },
       )
     }

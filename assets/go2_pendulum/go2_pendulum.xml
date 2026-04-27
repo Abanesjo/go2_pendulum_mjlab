@@ -220,10 +220,10 @@
       <body name="pendulum_base" pos="-0.05 0 0.06">
         <body name="pendulum_dof1">
           <inertial pos="0 0 0" mass="0.001" diaginertia="9.6e-06 9.6e-06 9.6e-06"/>
-          <joint name="pendulum_joint1" type="hinge" axis="1 0 0" range="-0.1745329252 0.1745329252"
+          <joint name="pendulum_joint1" type="hinge" axis="1 0 0" range="-0.3490658504 0.3490658504"
                  damping="0.5" armature="0" frictionloss="0" solreflimit="0.005 1" solimplimit="0.99 0.999 0.001 0.5 2"/>
           <body name="pendulum_dof2">
-            <joint name="pendulum_joint2" type="hinge" axis="0 1 0" range="-0.1745329252 0.1745329252"
+            <joint name="pendulum_joint2" type="hinge" axis="0 1 0" range="-0.3490658504 0.3490658504"
                    damping="0.5" armature="0" frictionloss="0" solreflimit="0.005 1" solimplimit="0.99 0.999 0.001 0.5 2"/>
             <geom name="pendulum_rod" type="cylinder" fromto="0 0 0 0 0 1.0"
                   size="0.01" rgba="1.0 0.5 0.0 1" mass="0.3"/>

@@ -450,7 +450,7 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
       ),
     ),
     decimation=4,
-    episode_length_s=20.0 if not play else 1.0e9,
+    episode_length_s=10.0,
     scale_rewards_by_dt=False,
   )
   joint_actuator_effort_l2,

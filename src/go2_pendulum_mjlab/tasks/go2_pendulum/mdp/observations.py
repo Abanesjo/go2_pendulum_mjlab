@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import torch
 
 from mjlab.entity import Entity
@@ -13,6 +15,84 @@ from mjlab.utils.lab_api.math import euler_xyz_from_quat, quat_apply_inverse, qu
 
 def _asset(env, asset_cfg: SceneEntityCfg) -> Entity:
   return env.scene[asset_cfg.name]
+
+
+class delayed_noisy_observation:
+  """Wrap an observation term with per-env delay, packet hold, noise, and bias."""
+
+  def __init__(self, cfg: ObservationTermCfg, env):
+    self._env = env
+    self._source_params = dict(cfg.params.get("source_params", {}))
+    for value in self._source_params.values():
+      if isinstance(value, SceneEntityCfg):
+        value.resolve(env.scene)
+    source_func = cfg.params["source_func"]
+    if isinstance(source_func, type):
+      self._source = source_func(SimpleNamespace(params=self._source_params), env)
+      self._call_source = lambda: self._source(env, **self._source_params)
+    else:
+      self._source = source_func
+      self._call_source = lambda: self._source(env, **self._source_params)
+
+    self._dim = int(cfg.params["dim"])
+    self._delay_steps_range = tuple(cfg.params.get("delay_steps_range", (0, 0)))
+    self._hold_prob = float(cfg.params.get("hold_prob", 0.0))
+    self._noise = float(cfg.params.get("noise", 0.0))
+    self._bias = float(cfg.params.get("bias", 0.0))
+    lo, hi = self._delay_steps_range
+    if lo < 0 or hi < lo:
+      raise ValueError(f"Invalid delay_steps_range={self._delay_steps_range}")
+    self._buffer = torch.zeros(env.num_envs, hi + 1, self._dim, device=env.device)
+    self._delay_steps = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
+    self._held_value = torch.zeros(env.num_envs, self._dim, device=env.device)
+    self._bias_value = torch.zeros(env.num_envs, self._dim, device=env.device)
+    self.reset()
+
+  def __call__(self, env, **_) -> torch.Tensor:
+    value = self._call_source()
+    if self._buffer.shape[1] > 1:
+      self._buffer[:, 1:, :] = self._buffer[:, :-1, :].clone()
+    self._buffer[:, 0, :] = value
+    env_ids = torch.arange(env.num_envs, device=env.device)
+    delayed = self._buffer[env_ids, self._delay_steps]
+    if self._hold_prob > 0.0:
+      hold_mask = torch.rand((env.num_envs, 1), device=env.device) < self._hold_prob
+      delayed = torch.where(hold_mask, self._held_value, delayed)
+    self._held_value[:] = delayed
+    out = delayed + self._bias_value
+    if self._noise > 0.0:
+      out = out + torch.empty_like(out).uniform_(-self._noise, self._noise)
+    return out
+
+  def reset(self, env_ids: torch.Tensor | slice | None = None) -> None:
+    if env_ids is None:
+      env_ids = slice(None)
+    if hasattr(self._source, "reset"):
+      self._source.reset(env_ids)
+    reset_ids = (
+      torch.arange(self._env.num_envs, device=self._env.device)[env_ids]
+      if isinstance(env_ids, slice)
+      else env_ids
+    )
+    count = len(reset_ids)
+    lo, hi = self._delay_steps_range
+    self._delay_steps[env_ids] = torch.randint(
+      low=lo,
+      high=hi + 1,
+      size=(count,),
+      device=self._env.device,
+    )
+    if self._bias > 0.0:
+      self._bias_value[env_ids] = torch.empty(
+        count,
+        self._dim,
+        device=self._env.device,
+      ).uniform_(-self._bias, self._bias)
+    else:
+      self._bias_value[env_ids] = 0.0
+    value = self._call_source()[env_ids]
+    self._buffer[env_ids, :, :] = value[:, None, :]
+    self._held_value[env_ids] = value
 
 
 class finite_diff_base_lin_vel_b:

@@ -17,8 +17,10 @@ def randomize_ordered_pd_gains(
   kp_range: tuple[float, float],
   kd_range: tuple[float, float],
   effort_limit_range: tuple[float, float] | None = None,
+  motor_strength_range: tuple[float, float] | None = None,
+  torque_response_tau_s_range: tuple[float, float] | None = None,
 ) -> None:
-  """Randomize the custom deployment-compatible PD action gains."""
+  """Randomize the custom deployment-compatible PD action path."""
   if env_ids is None:
     env_ids = torch.arange(env.num_envs, device=env.device)
   term = env.action_manager.get_term(action_name)
@@ -31,6 +33,12 @@ def randomize_ordered_pd_gains(
   if effort_limit_range is not None:
     scale = torch.empty((len(env_ids), 1), device=env.device).uniform_(*effort_limit_range)
     term.effort_limit[env_ids] = term.default_effort_limit[env_ids] * scale
+  if motor_strength_range is not None:
+    scale = torch.empty((len(env_ids), 1), device=env.device).uniform_(*motor_strength_range)
+    term.motor_strength[env_ids] = term.default_motor_strength[env_ids] * scale
+  if torque_response_tau_s_range is not None:
+    tau = torch.empty((len(env_ids), 1), device=env.device).uniform_(*torque_response_tau_s_range)
+    term.torque_response_tau_s[env_ids] = tau.expand(-1, term.action_dim)
 
 
 def reset_pendulum_by_sign_magnitude(

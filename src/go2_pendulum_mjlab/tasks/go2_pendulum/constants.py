@@ -97,10 +97,10 @@ DIFFICULTY_PRESETS: dict[int, dict[str, object]] = {
     goal_yaw=(math.radians(-60), math.radians(60)),
     pendulum_reset=(math.radians(0.0), math.radians(19.9)),
     pendulum_limits=(math.radians(-20.0), math.radians(20.0)),
-    pendulum_terminate_angle=math.radians(26.0),
+    pendulum_terminate_angle=math.radians(19.0),
     pendulum_terminate_duration=0.5,
     position_tolerance=0.2,
-    push_force_xy=(5.0, 5.0),
+    push_force_xy=(0.0, 0.0),
   ),
 }
 

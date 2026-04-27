@@ -137,6 +137,11 @@ def action_acc_l2(env) -> torch.Tensor:
   return torch.sum(torch.square(acc), dim=1)
 
 
+def action_soft_bound_l2(env, bound: float = 1.0) -> torch.Tensor:
+  excess = torch.clamp(torch.abs(env.action_manager.action) - bound, min=0.0)
+  return torch.sum(torch.square(excess), dim=1)
+
+
 def _ordered_pd_action_term(env, action_name: str):
   term = env.action_manager.get_term(action_name)
   required = ("applied_action", "prev_applied_action", "prev_prev_applied_action", "target_pos")
@@ -179,9 +184,35 @@ def target_pos_acc_l2(env, action_name: str = "joint_pos") -> torch.Tensor:
   return torch.sum(torch.square(acc), dim=1)
 
 
+def target_delta_l2(env, action_name: str = "joint_pos") -> torch.Tensor:
+  return target_pos_rate_l2(env, action_name=action_name)
+
+
+def target_delta_delta_l2(env, action_name: str = "joint_pos") -> torch.Tensor:
+  return target_pos_acc_l2(env, action_name=action_name)
+
+
 def joint_actuator_effort_l2(env, asset_cfg: SceneEntityCfg) -> torch.Tensor:
   asset: Entity = env.scene[asset_cfg.name]
   return torch.sum(torch.square(asset.data.qfrc_actuator[:, asset_cfg.joint_ids]), dim=1)
+
+
+def torque_l2(env, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+  return joint_actuator_effort_l2(env, asset_cfg=asset_cfg)
+
+
+def torque_rate_l2(env, action_name: str = "joint_pos") -> torch.Tensor:
+  term = env.action_manager.get_term(action_name)
+  required = ("applied_torque", "prev_applied_torque")
+  for name in required:
+    if not hasattr(term, name):
+      raise TypeError(f"Action term '{action_name}' is missing '{name}'")
+  rate = (term.applied_torque - term.prev_applied_torque) / env.step_dt
+  return torch.sum(torch.square(rate), dim=1)
+
+
+def applied_torque_rate_l2(env, action_name: str = "joint_pos") -> torch.Tensor:
+  return torque_rate_l2(env, action_name=action_name)
 
 
 def flat_orientation_reward(env, std: float, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:

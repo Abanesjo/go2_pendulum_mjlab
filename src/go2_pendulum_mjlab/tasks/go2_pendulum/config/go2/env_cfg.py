@@ -19,7 +19,6 @@ from mjlab.scene import SceneCfg
 from mjlab.sensor import ContactMatch, ContactSensorCfg
 from mjlab.sim import MujocoCfg, SimulationCfg
 from mjlab.terrains import TerrainEntityCfg
-from mjlab.utils.noise import UniformNoiseCfg as Unoise
 from mjlab.viewer import ViewerConfig
 
 from go2_pendulum_mjlab.tasks.go2_pendulum.constants import (
@@ -36,6 +35,7 @@ from go2_pendulum_mjlab.tasks.go2_pendulum.mdp import (
   action_filter_residual_l2,
   action_l2,
   action_rate_l2,
+  action_soft_bound_l2,
   applied_action_acc_l2,
   applied_action_l2,
   applied_action_rate_l2,
@@ -45,6 +45,7 @@ from go2_pendulum_mjlab.tasks.go2_pendulum.mdp import (
   base_height_l2,
   body_contact_force,
   clock_inputs,
+  delayed_noisy_observation,
   early_termination,
   feet_air_time,
   feet_clearance,
@@ -53,7 +54,6 @@ from go2_pendulum_mjlab.tasks.go2_pendulum.mdp import (
   goal_error_b,
   imu_ang_vel_b,
   isaac_difficulty,
-  joint_actuator_effort_l2,
   joint_pos_rel,
   joint_vel,
   lin_vel_z_l2,
@@ -68,8 +68,10 @@ from go2_pendulum_mjlab.tasks.go2_pendulum.mdp import (
   reset_pendulum_by_sign_magnitude,
   set_pendulum_joint_limits,
   sustained,
-  target_pos_acc_l2,
-  target_pos_rate_l2,
+  target_delta_delta_l2,
+  target_delta_l2,
+  torque_l2,
+  torque_rate_l2,
   tracking_contacts_shaped_force,
   undesired_contacts,
   yaw_alignment,
@@ -82,40 +84,140 @@ _FEET_GEOMS = ("FL", "FR", "RL", "RR")
 _FEET_BODIES = ("FL_foot", "FR_foot", "RL_foot", "RR_foot")
 _THIGH_BODIES = ("FL_thigh", "FR_thigh", "RL_thigh", "RR_thigh")
 
+ACTION_DELAY_STEPS_RANGE = (0, 2)
+PROPRIO_DELAY_STEPS_RANGE = (0, 1)
+BASE_LIN_VEL_DELAY_STEPS_RANGE = (0, 2)
+PENDULUM_DELAY_STEPS_RANGE = (0, 3)
+
+ACTION_HOLD_PROB = 0.01
+PROPRIO_OBS_HOLD_PROB = 0.005
+PENDULUM_OBS_HOLD_PROB = 0.01
+
+JOINT_POS_NOISE_RAD = 0.017
+JOINT_POS_BIAS_RAD = 0.010
+JOINT_VEL_NOISE_RAD_S = 0.50
+JOINT_VEL_BIAS_RAD_S = 0.05
+
+BASE_LIN_VEL_NOISE_M_S = 0.10
+BASE_LIN_VEL_BIAS_M_S = 0.03
+BASE_ANG_VEL_NOISE_RAD_S = 0.25
+BASE_ANG_VEL_BIAS_RAD_S = 0.02
+
+PROJECTED_GRAVITY_COMPONENT_NOISE = 0.025
+
+PENDULUM_POS_NOISE_RAD = 0.008
+PENDULUM_POS_BIAS_RAD = 0.005
+PENDULUM_VEL_NOISE_RAD_S = 0.40
+PENDULUM_VEL_BIAS_RAD_S = 0.05
+
+MOTOR_STRENGTH_RANGE = (0.8, 1.2)
+KP_SCALE_RANGE = (0.8, 1.3)
+KD_SCALE_RANGE = (0.5, 1.5)
+EFFORT_LIMIT_SCALE_RANGE = (0.7, 1.0)
+TORQUE_RESPONSE_TAU_S_RANGE = (0.005, 0.020)
+
+
+def _delayed_noisy_term(
+  source_func,
+  dim: int,
+  source_params: dict | None = None,
+  delay_steps_range: tuple[int, int] = (0, 0),
+  hold_prob: float = 0.0,
+  noise: float = 0.0,
+  bias: float = 0.0,
+) -> ObservationTermCfg:
+  return ObservationTermCfg(
+    func=delayed_noisy_observation,
+    params={
+      "source_func": source_func,
+      "source_params": source_params or {},
+      "dim": dim,
+      "delay_steps_range": delay_steps_range,
+      "hold_prob": hold_prob,
+      "noise": noise,
+      "bias": bias,
+    },
+  )
+
 
 def _obs_terms(noisy: bool) -> dict[str, ObservationTermCfg]:
-  return {
-    "base_lin_vel_b": ObservationTermCfg(
+  if noisy:
+    base_lin_vel_term = _delayed_noisy_term(
+      finite_diff_base_lin_vel_b,
+      dim=3,
+      source_params={"asset_cfg": SceneEntityCfg("robot")},
+      delay_steps_range=BASE_LIN_VEL_DELAY_STEPS_RANGE,
+      noise=BASE_LIN_VEL_NOISE_M_S,
+      bias=BASE_LIN_VEL_BIAS_M_S,
+    )
+    base_ang_vel_term = _delayed_noisy_term(
+      imu_ang_vel_b,
+      dim=3,
+      noise=BASE_ANG_VEL_NOISE_RAD_S,
+      bias=BASE_ANG_VEL_BIAS_RAD_S,
+    )
+    projected_gravity_term = _delayed_noisy_term(
+      projected_gravity_from_imu,
+      dim=3,
+      noise=PROJECTED_GRAVITY_COMPONENT_NOISE,
+    )
+    leg_joint_pos_term = _delayed_noisy_term(
+      joint_pos_rel,
+      dim=12,
+      source_params={"asset_cfg": _LEG_CFG},
+      delay_steps_range=PROPRIO_DELAY_STEPS_RANGE,
+      hold_prob=PROPRIO_OBS_HOLD_PROB,
+      noise=JOINT_POS_NOISE_RAD,
+      bias=JOINT_POS_BIAS_RAD,
+    )
+    leg_joint_vel_term = _delayed_noisy_term(
+      joint_vel,
+      dim=12,
+      source_params={"asset_cfg": _LEG_CFG},
+      delay_steps_range=PROPRIO_DELAY_STEPS_RANGE,
+      hold_prob=PROPRIO_OBS_HOLD_PROB,
+      noise=JOINT_VEL_NOISE_RAD_S,
+      bias=JOINT_VEL_BIAS_RAD_S,
+    )
+    pendulum_pos_term = _delayed_noisy_term(
+      joint_pos_rel,
+      dim=2,
+      source_params={"asset_cfg": _PEND_CFG},
+      delay_steps_range=PENDULUM_DELAY_STEPS_RANGE,
+      hold_prob=PENDULUM_OBS_HOLD_PROB,
+      noise=PENDULUM_POS_NOISE_RAD,
+      bias=PENDULUM_POS_BIAS_RAD,
+    )
+    pendulum_vel_term = _delayed_noisy_term(
+      joint_vel,
+      dim=2,
+      source_params={"asset_cfg": _PEND_CFG},
+      delay_steps_range=PENDULUM_DELAY_STEPS_RANGE,
+      hold_prob=PENDULUM_OBS_HOLD_PROB,
+      noise=PENDULUM_VEL_NOISE_RAD_S,
+      bias=PENDULUM_VEL_BIAS_RAD_S,
+    )
+  else:
+    base_lin_vel_term = ObservationTermCfg(
       func=finite_diff_base_lin_vel_b,
       params={"asset_cfg": SceneEntityCfg("robot")},
-      noise=Unoise(n_min=-0.02, n_max=0.02) if noisy else None,
-    ),
-    "base_ang_vel_b": ObservationTermCfg(
-      func=imu_ang_vel_b,
-      noise=Unoise(n_min=-0.2, n_max=0.2) if noisy else None,
-    ),
-    "projected_gravity_b": ObservationTermCfg(func=projected_gravity_from_imu),
+    )
+    base_ang_vel_term = ObservationTermCfg(func=imu_ang_vel_b)
+    projected_gravity_term = ObservationTermCfg(func=projected_gravity_from_imu)
+    leg_joint_pos_term = ObservationTermCfg(func=joint_pos_rel, params={"asset_cfg": _LEG_CFG})
+    leg_joint_vel_term = ObservationTermCfg(func=joint_vel, params={"asset_cfg": _LEG_CFG})
+    pendulum_pos_term = ObservationTermCfg(func=joint_pos_rel, params={"asset_cfg": _PEND_CFG})
+    pendulum_vel_term = ObservationTermCfg(func=joint_vel, params={"asset_cfg": _PEND_CFG})
+
+  return {
+    "base_lin_vel_b": base_lin_vel_term,
+    "base_ang_vel_b": base_ang_vel_term,
+    "projected_gravity_b": projected_gravity_term,
     "goal_error_b": ObservationTermCfg(func=goal_error_b),
-    "leg_joint_pos_rel": ObservationTermCfg(
-      func=joint_pos_rel,
-      params={"asset_cfg": _LEG_CFG},
-      noise=Unoise(n_min=-math.radians(1.0), n_max=math.radians(1.0)) if noisy else None,
-    ),
-    "leg_joint_vel": ObservationTermCfg(
-      func=joint_vel,
-      params={"asset_cfg": _LEG_CFG},
-      noise=Unoise(n_min=-math.radians(5.0), n_max=math.radians(5.0)) if noisy else None,
-    ),
-    "pendulum_pos": ObservationTermCfg(
-      func=joint_pos_rel,
-      params={"asset_cfg": _PEND_CFG},
-      noise=Unoise(n_min=-math.radians(0.06), n_max=math.radians(0.06)) if noisy else None,
-    ),
-    "pendulum_vel": ObservationTermCfg(
-      func=joint_vel,
-      params={"asset_cfg": _PEND_CFG},
-      noise=Unoise(n_min=-math.radians(3.0), n_max=math.radians(3.0)) if noisy else None,
-    ),
+    "leg_joint_pos_rel": leg_joint_pos_term,
+    "leg_joint_vel": leg_joint_vel_term,
+    "pendulum_pos": pendulum_pos_term,
+    "pendulum_vel": pendulum_vel_term,
     "last_action": ObservationTermCfg(
       func=applied_last_action,
       params={"action_name": "joint_pos"},
@@ -151,13 +253,13 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
       stiffness=25.0,
       damping=0.6,
       effort_limit=23.5,
-      clip_actions=True,
+      clip_actions=False,
       action_clip=1.0,
       enable_target_filter=False,
       target_lpf_tau_s=0.06,
-      max_target_rate=4.5,
-      latency_steps_range=(0, 0) if play else (0, 2),
-      command_hold_prob=0.0 if play else 0.02,
+      max_target_rate=0.0,
+      latency_steps_range=(0, 0) if play else ACTION_DELAY_STEPS_RANGE,
+      command_hold_prob=0.0 if play else ACTION_HOLD_PROB,
     )
   }
 
@@ -198,9 +300,11 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
       func=randomize_ordered_pd_gains,
       params={
         "action_name": "joint_pos",
-        "kp_range": (0.7, 1.3),
-        "kd_range": (0.5, 1.5),
-        "effort_limit_range": (0.7, 1.0),
+        "kp_range": KP_SCALE_RANGE,
+        "kd_range": KD_SCALE_RANGE,
+        "effort_limit_range": EFFORT_LIMIT_SCALE_RANGE,
+        "motor_strength_range": MOTOR_STRENGTH_RANGE,
+        "torque_response_tau_s_range": TORQUE_RESPONSE_TAU_S_RANGE,
       },
     ),
     "encoder_bias": EventTermCfg(
@@ -266,11 +370,16 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     ),
     "rew_action_rate": RewardTermCfg(
       func=action_rate_l2,
-      weight=-0.05 * (ACTION_SCALE**2),
+      weight=-0.10 * (ACTION_SCALE**2),
     ),
     "action_acc": RewardTermCfg(
       func=action_acc_l2,
-      weight=-0.03 * (ACTION_SCALE**2),
+      weight=-0.06 * (ACTION_SCALE**2),
+    ),
+    "action_soft_bound": RewardTermCfg(
+      func=action_soft_bound_l2,
+      weight=-0.1,
+      params={"bound": 1.0},
     ),
     "applied_action_magnitude": RewardTermCfg(
       func=applied_action_l2,
@@ -293,19 +402,24 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
       params={"action_name": "joint_pos"},
     ),
     "target_pos_rate": RewardTermCfg(
-      func=target_pos_rate_l2,
-      weight=-1.0e-3,
+      func=target_delta_l2,
+      weight=-1.0e-4,
       params={"action_name": "joint_pos"},
     ),
     "target_pos_acc": RewardTermCfg(
-      func=target_pos_acc_l2,
-      weight=-2.0e-6,
+      func=target_delta_delta_l2,
+      weight=-2.0e-8,
       params={"action_name": "joint_pos"},
     ),
     "torque": RewardTermCfg(
-      func=joint_actuator_effort_l2,
-      weight=-0.0001,
+      func=torque_l2,
+      weight=-0.0002,
       params={"asset_cfg": _LEG_CFG},
+    ),
+    "torque_rate": RewardTermCfg(
+      func=torque_rate_l2,
+      weight=-2.0e-6,
+      params={"action_name": "joint_pos"},
     ),
     "orient": RewardTermCfg(func=flat_orientation_reward, weight=0.8, params={"std": 0.05}),
     "base_height": RewardTermCfg(
@@ -315,7 +429,7 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     ),
     "lin_vel_z": RewardTermCfg(func=lin_vel_z_l2, weight=-2.0),
     "dof_vel": RewardTermCfg(func=env_mdp.joint_vel_l2, weight=-0.003, params={"asset_cfg": _LEG_CFG}),
-    "dof_acc": RewardTermCfg(func=env_mdp.joint_acc_l2, weight=-2.5e-7, params={"asset_cfg": _LEG_CFG}),
+    "dof_acc": RewardTermCfg(func=env_mdp.joint_acc_l2, weight=-5.0e-7, params={"asset_cfg": _LEG_CFG}),
     "ang_vel_xy": RewardTermCfg(func=ang_vel_xy_l2, weight=-0.01),
     "feet_clearance": RewardTermCfg(
       func=feet_clearance,
@@ -500,6 +614,3 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     episode_length_s=10.0,
     scale_rewards_by_dt=False,
   )
-  joint_actuator_effort_l2,
-  lin_vel_z_l2,
-  ang_vel_xy_l2,

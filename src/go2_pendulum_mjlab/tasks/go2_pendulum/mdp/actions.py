@@ -34,6 +34,8 @@ class OrderedGo2PdActionCfg(ActionTermCfg):
   latency_steps_range: tuple[int, int] = (0, 2)
   command_hold_prob: float = 0.02
   randomize_effort_limit: bool = True
+  motor_strength: float = 1.0
+  torque_response_tau_s: float = 0.0
 
   def build(self, env) -> "OrderedGo2PdAction":
     return OrderedGo2PdAction(self, env)
@@ -80,9 +82,19 @@ class OrderedGo2PdAction(ActionTerm):
     self._default_effort_limit = torch.full(
       (self.num_envs, self.action_dim), cfg.effort_limit, device=self.device
     )
+    self._default_motor_strength = torch.full(
+      (self.num_envs, self.action_dim), cfg.motor_strength, device=self.device
+    )
+    self._default_torque_response_tau_s = torch.full(
+      (self.num_envs, self.action_dim), cfg.torque_response_tau_s, device=self.device
+    )
     self.stiffness = self._default_stiffness.clone()
     self.damping = self._default_damping.clone()
     self.effort_limit = self._default_effort_limit.clone()
+    self.motor_strength = self._default_motor_strength.clone()
+    self.torque_response_tau_s = self._default_torque_response_tau_s.clone()
+    self._applied_torque = torch.zeros_like(self._raw_actions)
+    self._prev_applied_torque = torch.zeros_like(self._raw_actions)
 
   @property
   def action_dim(self) -> int:
@@ -137,6 +149,22 @@ class OrderedGo2PdAction(ActionTerm):
     return self._default_effort_limit
 
   @property
+  def default_motor_strength(self) -> torch.Tensor:
+    return self._default_motor_strength
+
+  @property
+  def default_torque_response_tau_s(self) -> torch.Tensor:
+    return self._default_torque_response_tau_s
+
+  @property
+  def applied_torque(self) -> torch.Tensor:
+    return self._applied_torque
+
+  @property
+  def prev_applied_torque(self) -> torch.Tensor:
+    return self._prev_applied_torque
+
+  @property
   def latency_steps(self) -> torch.Tensor:
     return self._latency_steps
 
@@ -167,7 +195,7 @@ class OrderedGo2PdAction(ActionTerm):
         max=max_delta,
       )
     else:
-      q_limited = self._filter_target_pos
+      q_limited = q_lpf
     self._filter_target_pos[:] = q_limited
 
     if self._target_delay_buffer.shape[1] > 1:
@@ -195,8 +223,19 @@ class OrderedGo2PdAction(ActionTerm):
   def apply_actions(self) -> None:
     q = self._entity.data.joint_pos[:, self._joint_ids]
     dq = self._entity.data.joint_vel[:, self._joint_ids]
-    torque = self.stiffness * (self._target_pos - q) - self.damping * dq
+    desired_torque = self.motor_strength * (
+      self.stiffness * (self._target_pos - q) - self.damping * dq
+    )
+    tau = self.torque_response_tau_s
+    alpha = torch.where(
+      tau <= 0.0,
+      torch.ones_like(tau),
+      1.0 - torch.exp(-float(self._env.step_dt) / tau),
+    )
+    torque = self._applied_torque + alpha * (desired_torque - self._applied_torque)
     torque = torch.minimum(torch.maximum(torque, -self.effort_limit), self.effort_limit)
+    self._prev_applied_torque[:] = self._applied_torque
+    self._applied_torque[:] = torque
     self._entity.set_joint_effort_target(torque, joint_ids=self._joint_ids)
 
   def reset(self, env_ids: torch.Tensor | slice | None = None) -> None:
@@ -230,3 +269,5 @@ class OrderedGo2PdAction(ActionTerm):
     self._prev_prev_applied_action[env_ids] = self._applied_action[env_ids]
     self._prev_target_pos[env_ids] = q_init
     self._prev_prev_target_pos[env_ids] = q_init
+    self._applied_torque[env_ids] = 0.0
+    self._prev_applied_torque[env_ids] = 0.0

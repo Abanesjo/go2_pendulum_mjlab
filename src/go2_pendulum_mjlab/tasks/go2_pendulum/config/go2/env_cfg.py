@@ -153,9 +153,9 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
       effort_limit=23.5,
       clip_actions=True,
       action_clip=1.0,
-      enable_target_filter=True,
+      enable_target_filter=False,
       target_lpf_tau_s=0.06,
-      max_target_rate=2.5,
+      max_target_rate=4.5,
       latency_steps_range=(0, 0) if play else (0, 2),
       command_hold_prob=0.0 if play else 0.02,
     )

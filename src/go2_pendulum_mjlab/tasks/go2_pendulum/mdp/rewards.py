@@ -137,6 +137,48 @@ def action_acc_l2(env) -> torch.Tensor:
   return torch.sum(torch.square(acc), dim=1)
 
 
+def _ordered_pd_action_term(env, action_name: str):
+  term = env.action_manager.get_term(action_name)
+  required = ("applied_action", "prev_applied_action", "prev_prev_applied_action", "target_pos")
+  for name in required:
+    if not hasattr(term, name):
+      raise TypeError(f"Action term '{action_name}' is missing '{name}'")
+  return term
+
+
+def applied_action_l2(env, action_name: str = "joint_pos") -> torch.Tensor:
+  term = _ordered_pd_action_term(env, action_name)
+  return torch.sum(torch.square(term.applied_action), dim=1)
+
+
+def applied_action_rate_l2(env, action_name: str = "joint_pos") -> torch.Tensor:
+  term = _ordered_pd_action_term(env, action_name)
+  return torch.sum(torch.square(term.applied_action - term.prev_applied_action), dim=1)
+
+
+def applied_action_acc_l2(env, action_name: str = "joint_pos") -> torch.Tensor:
+  term = _ordered_pd_action_term(env, action_name)
+  acc = term.applied_action - 2.0 * term.prev_applied_action + term.prev_prev_applied_action
+  return torch.sum(torch.square(acc), dim=1)
+
+
+def action_filter_residual_l2(env, action_name: str = "joint_pos") -> torch.Tensor:
+  term = _ordered_pd_action_term(env, action_name)
+  return torch.sum(torch.square(term.raw_action - term.applied_action), dim=1)
+
+
+def target_pos_rate_l2(env, action_name: str = "joint_pos") -> torch.Tensor:
+  term = _ordered_pd_action_term(env, action_name)
+  rate = (term.target_pos - term.prev_target_pos) / env.step_dt
+  return torch.sum(torch.square(rate), dim=1)
+
+
+def target_pos_acc_l2(env, action_name: str = "joint_pos") -> torch.Tensor:
+  term = _ordered_pd_action_term(env, action_name)
+  acc = (term.target_pos - 2.0 * term.prev_target_pos + term.prev_prev_target_pos) / (env.step_dt**2)
+  return torch.sum(torch.square(acc), dim=1)
+
+
 def joint_actuator_effort_l2(env, asset_cfg: SceneEntityCfg) -> torch.Tensor:
   asset: Entity = env.scene[asset_cfg.name]
   return torch.sum(torch.square(asset.data.qfrc_actuator[:, asset_cfg.joint_ids]), dim=1)

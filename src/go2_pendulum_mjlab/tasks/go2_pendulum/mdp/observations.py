@@ -75,6 +75,13 @@ def raw_last_action(env) -> torch.Tensor:
   return env.action_manager.action
 
 
+def applied_last_action(env, action_name: str = "joint_pos") -> torch.Tensor:
+  term = env.action_manager.get_term(action_name)
+  if not hasattr(term, "applied_action"):
+    raise TypeError(f"Action term '{action_name}' does not expose applied_action")
+  return term.applied_action
+
+
 def clock_inputs(env) -> torch.Tensor:
   step = env.episode_length_buf.to(dtype=torch.float32) * env.step_dt * 3.0
   gait = torch.remainder(step, 1.0)
@@ -120,4 +127,3 @@ def clean_goal_error_from_pose(env, target_xy: torch.Tensor, target_yaw: torch.T
     ),
     dim=-1,
   )
-

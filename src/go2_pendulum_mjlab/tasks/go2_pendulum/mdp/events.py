@@ -16,6 +16,7 @@ def randomize_ordered_pd_gains(
   action_name: str,
   kp_range: tuple[float, float],
   kd_range: tuple[float, float],
+  effort_limit_range: tuple[float, float] | None = None,
 ) -> None:
   """Randomize the custom deployment-compatible PD action gains."""
   if env_ids is None:
@@ -27,6 +28,9 @@ def randomize_ordered_pd_gains(
   kd = torch.empty((len(env_ids), 1), device=env.device).uniform_(*kd_range)
   term.stiffness[env_ids] = term.default_stiffness[env_ids] * kp
   term.damping[env_ids] = term.default_damping[env_ids] * kd
+  if effort_limit_range is not None:
+    scale = torch.empty((len(env_ids), 1), device=env.device).uniform_(*effort_limit_range)
+    term.effort_limit[env_ids] = term.default_effort_limit[env_ids] * scale
 
 
 def reset_pendulum_by_sign_magnitude(

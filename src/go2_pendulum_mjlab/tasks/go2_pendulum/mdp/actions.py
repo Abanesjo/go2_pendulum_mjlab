@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import torch
@@ -25,6 +26,14 @@ class OrderedGo2PdActionCfg(ActionTermCfg):
   stiffness: float = 25.0
   damping: float = 0.6
   effort_limit: float = 23.5
+  clip_actions: bool = True
+  action_clip: float = 1.0
+  enable_target_filter: bool = True
+  target_lpf_tau_s: float = 0.06
+  max_target_rate: float = 2.5
+  latency_steps_range: tuple[int, int] = (0, 2)
+  command_hold_prob: float = 0.02
+  randomize_effort_limit: bool = True
 
   def build(self, env) -> "OrderedGo2PdAction":
     return OrderedGo2PdAction(self, env)
@@ -37,6 +46,7 @@ class OrderedGo2PdAction(ActionTerm):
 
   def __init__(self, cfg: OrderedGo2PdActionCfg, env):
     super().__init__(cfg=cfg, env=env)
+    self._env = env
     joint_ids, joint_names = self._entity.find_joints(cfg.joint_names, preserve_order=True)
     if tuple(joint_names) != tuple(cfg.joint_names):
       raise RuntimeError(f"Resolved joint order mismatch: {joint_names}")
@@ -44,15 +54,35 @@ class OrderedGo2PdAction(ActionTerm):
     self._raw_actions = torch.zeros(self.num_envs, self.action_dim, device=self.device)
     self._target_pos = torch.tensor(cfg.default_joint_pos, device=self.device).repeat(self.num_envs, 1)
     self._default_pos = self._target_pos.clone()
+    self._filter_target_pos = self._target_pos.clone()
     self._applied_action = torch.zeros_like(self._raw_actions)
+    self._prev_applied_action = torch.zeros_like(self._raw_actions)
+    self._prev_prev_applied_action = torch.zeros_like(self._raw_actions)
+    self._prev_target_pos = self._target_pos.clone()
+    self._prev_prev_target_pos = self._target_pos.clone()
+    lo, hi = cfg.latency_steps_range
+    if lo < 0 or hi < lo:
+      raise ValueError(f"Invalid latency_steps_range={cfg.latency_steps_range}")
+    self._target_delay_buffer = torch.zeros(
+      self.num_envs,
+      hi + 1,
+      self.action_dim,
+      device=self.device,
+    )
+    self._target_delay_buffer[:] = self._target_pos[:, None, :]
+    self._latency_steps = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
     self._default_stiffness = torch.full(
       (self.num_envs, self.action_dim), cfg.stiffness, device=self.device
     )
     self._default_damping = torch.full(
       (self.num_envs, self.action_dim), cfg.damping, device=self.device
     )
+    self._default_effort_limit = torch.full(
+      (self.num_envs, self.action_dim), cfg.effort_limit, device=self.device
+    )
     self.stiffness = self._default_stiffness.clone()
     self.damping = self._default_damping.clone()
+    self.effort_limit = self._default_effort_limit.clone()
 
   @property
   def action_dim(self) -> int:
@@ -67,12 +97,28 @@ class OrderedGo2PdAction(ActionTerm):
     return self._applied_action
 
   @property
+  def prev_applied_action(self) -> torch.Tensor:
+    return self._prev_applied_action
+
+  @property
+  def prev_prev_applied_action(self) -> torch.Tensor:
+    return self._prev_prev_applied_action
+
+  @property
   def joint_ids(self) -> torch.Tensor:
     return self._joint_ids
 
   @property
   def target_pos(self) -> torch.Tensor:
     return self._target_pos
+
+  @property
+  def prev_target_pos(self) -> torch.Tensor:
+    return self._prev_target_pos
+
+  @property
+  def prev_prev_target_pos(self) -> torch.Tensor:
+    return self._prev_prev_target_pos
 
   @property
   def default_stiffness(self) -> torch.Tensor:
@@ -82,21 +128,105 @@ class OrderedGo2PdAction(ActionTerm):
   def default_damping(self) -> torch.Tensor:
     return self._default_damping
 
+  @property
+  def effort_limit_tensor(self) -> torch.Tensor:
+    return self.effort_limit
+
+  @property
+  def default_effort_limit(self) -> torch.Tensor:
+    return self._default_effort_limit
+
+  @property
+  def latency_steps(self) -> torch.Tensor:
+    return self._latency_steps
+
   def process_actions(self, actions: torch.Tensor) -> None:
-    self._raw_actions[:] = actions
-    self._applied_action[:] = actions
-    self._target_pos[:] = self._default_pos + self.cfg.action_scale * self._raw_actions
+    self._prev_prev_applied_action[:] = self._prev_applied_action
+    self._prev_applied_action[:] = self._applied_action
+    self._prev_prev_target_pos[:] = self._prev_target_pos
+    self._prev_target_pos[:] = self._target_pos
+
+    if self.cfg.clip_actions:
+      self._raw_actions[:] = torch.clamp(actions, -self.cfg.action_clip, self.cfg.action_clip)
+    else:
+      self._raw_actions[:] = actions
+
+    q_raw = self._default_pos + self.cfg.action_scale * self._raw_actions
+    if self.cfg.enable_target_filter:
+      tau = self.cfg.target_lpf_tau_s
+      alpha = 1.0 if tau <= 0.0 else 1.0 - math.exp(-float(self._env.step_dt) / tau)
+      q_lpf = self._filter_target_pos + alpha * (q_raw - self._filter_target_pos)
+    else:
+      q_lpf = q_raw
+
+    max_delta = self.cfg.max_target_rate * float(self._env.step_dt)
+    if max_delta > 0.0:
+      q_limited = self._filter_target_pos + torch.clamp(
+        q_lpf - self._filter_target_pos,
+        min=-max_delta,
+        max=max_delta,
+      )
+    else:
+      q_limited = self._filter_target_pos
+    self._filter_target_pos[:] = q_limited
+
+    if self._target_delay_buffer.shape[1] > 1:
+      self._target_delay_buffer[:, 1:, :] = self._target_delay_buffer[:, :-1, :].clone()
+    self._target_delay_buffer[:, 0, :] = q_limited
+    env_ids = torch.arange(self.num_envs, device=self.device)
+    q_delayed = self._target_delay_buffer[env_ids, self._latency_steps]
+
+    hold_prob = self.cfg.command_hold_prob
+    if hold_prob > 0.0:
+      hold_mask = torch.rand((self.num_envs, 1), device=self.device) < hold_prob
+      q_target = torch.where(hold_mask, self._target_pos, q_delayed)
+    else:
+      q_target = q_delayed
+    if max_delta > 0.0:
+      q_target = self._target_pos + torch.clamp(
+        q_target - self._target_pos,
+        min=-max_delta,
+        max=max_delta,
+      )
+
+    self._target_pos[:] = q_target
+    self._applied_action[:] = (self._target_pos - self._default_pos) / self.cfg.action_scale
 
   def apply_actions(self) -> None:
     q = self._entity.data.joint_pos[:, self._joint_ids]
     dq = self._entity.data.joint_vel[:, self._joint_ids]
     torque = self.stiffness * (self._target_pos - q) - self.damping * dq
-    torque = torch.clamp(torque, -self.cfg.effort_limit, self.cfg.effort_limit)
+    torque = torch.minimum(torch.maximum(torque, -self.effort_limit), self.effort_limit)
     self._entity.set_joint_effort_target(torque, joint_ids=self._joint_ids)
 
   def reset(self, env_ids: torch.Tensor | slice | None = None) -> None:
     if env_ids is None:
       env_ids = slice(None)
+    reset_ids = (
+      torch.arange(self.num_envs, device=self.device)[env_ids]
+      if isinstance(env_ids, slice)
+      else env_ids
+    )
+    count = len(reset_ids)
+    q_init = self._default_pos[env_ids].clone()
+    try:
+      q = self._entity.data.joint_pos[:, self._joint_ids][env_ids]
+      q_init = torch.where(torch.isfinite(q), q, q_init)
+    except (AttributeError, IndexError, RuntimeError):
+      pass
+    lo, hi = self.cfg.latency_steps_range
+    self._latency_steps[env_ids] = torch.randint(
+      low=lo,
+      high=hi + 1,
+      size=(count,),
+      device=self.device,
+    )
     self._raw_actions[env_ids] = 0.0
-    self._applied_action[env_ids] = 0.0
-    self._target_pos[env_ids] = self._default_pos[env_ids]
+    self._filter_target_pos[env_ids] = q_init
+    self._target_pos[env_ids] = q_init
+    self._target_delay_buffer[env_ids, :, :] = q_init[:, None, :]
+    self._applied_action[env_ids] = (q_init - self._default_pos[env_ids]) / self.cfg.action_scale
+    self._prev_applied_action[env_ids] = self._applied_action[env_ids]
+    self._prev_prev_applied_action[env_ids] = self._applied_action[env_ids]
+    self._prev_target_pos[env_ids] = q_init
+    self._prev_prev_target_pos[env_ids] = q_init

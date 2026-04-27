@@ -33,8 +33,13 @@ from go2_pendulum_mjlab.tasks.go2_pendulum.mdp import (
   OrderedGo2PdActionCfg,
   PositionGoalCommandCfg,
   action_acc_l2,
+  action_filter_residual_l2,
   action_l2,
   action_rate_l2,
+  applied_action_acc_l2,
+  applied_action_l2,
+  applied_action_rate_l2,
+  applied_last_action,
   ang_vel_xy_l2,
   balanced_movement,
   base_height_l2,
@@ -59,11 +64,12 @@ from go2_pendulum_mjlab.tasks.go2_pendulum.mdp import (
   position_tracking,
   progress,
   projected_gravity_from_imu,
-  raw_last_action,
   randomize_ordered_pd_gains,
   reset_pendulum_by_sign_magnitude,
   set_pendulum_joint_limits,
   sustained,
+  target_pos_acc_l2,
+  target_pos_rate_l2,
   tracking_contacts_shaped_force,
   undesired_contacts,
   yaw_alignment,
@@ -110,7 +116,10 @@ def _obs_terms(noisy: bool) -> dict[str, ObservationTermCfg]:
       params={"asset_cfg": _PEND_CFG},
       noise=Unoise(n_min=-math.radians(3.0), n_max=math.radians(3.0)) if noisy else None,
     ),
-    "last_action": ObservationTermCfg(func=raw_last_action),
+    "last_action": ObservationTermCfg(
+      func=applied_last_action,
+      params={"action_name": "joint_pos"},
+    ),
     "clock_inputs": ObservationTermCfg(func=clock_inputs),
   }
 
@@ -142,6 +151,13 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
       stiffness=25.0,
       damping=0.6,
       effort_limit=23.5,
+      clip_actions=True,
+      action_clip=1.0,
+      enable_target_filter=True,
+      target_lpf_tau_s=0.06,
+      max_target_rate=2.5,
+      latency_steps_range=(0, 0) if play else (0, 2),
+      command_hold_prob=0.0 if play else 0.02,
     )
   }
 
@@ -182,8 +198,9 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
       func=randomize_ordered_pd_gains,
       params={
         "action_name": "joint_pos",
-        "kp_range": (0.9, 1.1),
-        "kd_range": (0.9, 1.1),
+        "kp_range": (0.7, 1.3),
+        "kd_range": (0.5, 1.5),
+        "effort_limit_range": (0.7, 1.0),
       },
     ),
     "encoder_bias": EventTermCfg(
@@ -249,11 +266,41 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     ),
     "rew_action_rate": RewardTermCfg(
       func=action_rate_l2,
-      weight=-0.01 * (ACTION_SCALE**2),
+      weight=-0.05 * (ACTION_SCALE**2),
     ),
     "action_acc": RewardTermCfg(
       func=action_acc_l2,
-      weight=-0.01 * (ACTION_SCALE**2),
+      weight=-0.03 * (ACTION_SCALE**2),
+    ),
+    "applied_action_magnitude": RewardTermCfg(
+      func=applied_action_l2,
+      weight=-0.05 * (ACTION_SCALE**2),
+      params={"action_name": "joint_pos"},
+    ),
+    "applied_action_rate": RewardTermCfg(
+      func=applied_action_rate_l2,
+      weight=-0.10 * (ACTION_SCALE**2),
+      params={"action_name": "joint_pos"},
+    ),
+    "applied_action_acc": RewardTermCfg(
+      func=applied_action_acc_l2,
+      weight=-0.05 * (ACTION_SCALE**2),
+      params={"action_name": "joint_pos"},
+    ),
+    "action_filter_residual": RewardTermCfg(
+      func=action_filter_residual_l2,
+      weight=-0.02,
+      params={"action_name": "joint_pos"},
+    ),
+    "target_pos_rate": RewardTermCfg(
+      func=target_pos_rate_l2,
+      weight=-1.0e-3,
+      params={"action_name": "joint_pos"},
+    ),
+    "target_pos_acc": RewardTermCfg(
+      func=target_pos_acc_l2,
+      weight=-2.0e-6,
+      params={"action_name": "joint_pos"},
     ),
     "torque": RewardTermCfg(
       func=joint_actuator_effort_l2,

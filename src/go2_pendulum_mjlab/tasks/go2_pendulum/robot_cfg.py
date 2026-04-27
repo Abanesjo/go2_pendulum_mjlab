@@ -13,6 +13,9 @@ from go2_pendulum_mjlab.tasks.go2_pendulum.constants import DEFAULT_JOINT_POS, L
 
 ASSET_DIR = Path(__file__).resolve().parents[2] / "assets" / "go2_pendulum"
 GO2_PENDULUM_XML = ASSET_DIR / "go2_pendulum.xml"
+LEG_ARMATURE = 0.0
+LEG_FRICTIONLOSS = 0.0
+LEG_VISCOUS_DAMPING = 0.0
 
 
 def get_spec() -> mujoco.MjSpec:
@@ -38,9 +41,9 @@ GO2_ARTICULATION = EntityArticulationInfoCfg(
     XmlActuatorCfg(
       target_names_expr=LEG_JOINT_NAMES,
       command_field="effort",
-      armature=0.0,
-      frictionloss=0.0,
-      viscous_damping=0.0,
+      armature=LEG_ARMATURE,
+      frictionloss=LEG_FRICTIONLOSS,
+      viscous_damping=LEG_VISCOUS_DAMPING,
     ),
   ),
   soft_joint_pos_limit_factor=0.9,

@@ -38,16 +38,16 @@ class sustained:
 
   def __call__(self, env, inner: dict, duration_s: float = 0.0, grace_period_s: float = 0.0) -> torch.Tensor:
     cond = self._inner_func(env, **inner.get("params", {}))
-    self._hold_count = torch.where(cond, self._hold_count + 1, torch.zeros_like(self._hold_count))
     duration_steps = int(round(float(duration_s) / env.step_dt))
     grace_steps = int(round(float(grace_period_s) / env.step_dt))
     past_grace = env.episode_length_buf >= grace_steps
+    active_cond = cond & past_grace
+    self._hold_count = torch.where(active_cond, self._hold_count + 1, torch.zeros_like(self._hold_count))
     if duration_steps <= 0:
-      return cond & past_grace
+      return active_cond
     return (self._hold_count >= duration_steps) & past_grace
 
   def reset(self, env_ids=None) -> None:
     if env_ids is None:
       env_ids = slice(None)
     self._hold_count[env_ids] = 0
-

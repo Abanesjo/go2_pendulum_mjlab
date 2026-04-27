@@ -47,7 +47,10 @@ def reset_pendulum_by_sign_magnitude(
   asset_cfg: SceneEntityCfg,
   angle_range: tuple[float, float],
 ) -> None:
-  """Sample each pendulum joint as sign * U(min, max), matching IsaacLab."""
+  """Sample pendulum reset by radial angle from vertical.
+
+  ``angle_range`` bounds ``sqrt(a^2 + b^2)`` for the two pendulum angles.
+  """
   if env_ids is None:
     env_ids = torch.arange(env.num_envs, device=env.device)
   asset: Entity = env.scene[asset_cfg.name]
@@ -55,10 +58,13 @@ def reset_pendulum_by_sign_magnitude(
   joint_pos = asset.data.default_joint_pos[env_ids].clone()
   joint_vel = asset.data.default_joint_vel[env_ids].clone()
   count = len(joint_ids)
-  signs = torch.randint(0, 2, (len(env_ids), count), device=env.device) * 2 - 1
+  if count != 2:
+    raise ValueError(f"Expected two pendulum joints, got {count}")
   lo, hi = angle_range
-  mags = torch.empty((len(env_ids), count), device=env.device).uniform_(lo, hi)
-  joint_pos[:, joint_ids] = joint_pos[:, joint_ids] + signs.float() * mags
+  radius = torch.empty((len(env_ids),), device=env.device).uniform_(lo, hi)
+  theta = torch.empty((len(env_ids),), device=env.device).uniform_(0.0, 2.0 * torch.pi)
+  offsets = torch.stack((radius * torch.cos(theta), radius * torch.sin(theta)), dim=-1)
+  joint_pos[:, joint_ids] = joint_pos[:, joint_ids] + offsets
   joint_vel[:, joint_ids] = 0.0
   asset.write_joint_state_to_sim(joint_pos, joint_vel, env_ids=env_ids)
 

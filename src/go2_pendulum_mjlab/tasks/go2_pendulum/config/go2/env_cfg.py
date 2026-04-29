@@ -284,7 +284,7 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     ),
     "orient": RewardTermCfg(
       func=flat_orientation_reward, 
-      weight=0.1, 
+      weight=0.3, 
       params={"std": 0.05}),
     
     "base_height": RewardTermCfg(

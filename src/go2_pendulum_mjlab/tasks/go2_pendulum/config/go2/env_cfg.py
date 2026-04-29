@@ -103,12 +103,12 @@ def _obs_terms(noisy: bool) -> dict[str, ObservationTermCfg]:
     "pendulum_pos": ObservationTermCfg(
       func=joint_pos_rel,
       params={"asset_cfg": _PEND_CFG},
-      noise=Unoise(n_min=-math.radians(0.06), n_max=math.radians(0.06)) if noisy else None,
+      noise=Unoise(n_min=-math.radians(0.5), n_max=math.radians(0.5)) if noisy else None,
     ),
     "pendulum_vel": ObservationTermCfg(
       func=joint_vel,
       params={"asset_cfg": _PEND_CFG},
-      noise=Unoise(n_min=-math.radians(3.0), n_max=math.radians(3.0)) if noisy else None,
+      noise=Unoise(n_min=-math.radians(2.0), n_max=math.radians(2.0)) if noisy else None,
     ),
     "last_action": ObservationTermCfg(func=raw_last_action),
     "clock_inputs": ObservationTermCfg(func=clock_inputs),

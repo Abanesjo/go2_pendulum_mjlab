@@ -271,7 +271,7 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     ),
     "rew_action_rate": RewardTermCfg(
       func=action_rate_l2,
-      weight=-0.1 * (ACTION_SCALE**2),
+      weight=-0.2 * (ACTION_SCALE**2),
     ),
     "action_acc": RewardTermCfg(
       func=action_acc_l2,
@@ -282,7 +282,11 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
       weight=-0.0005,
       params={"asset_cfg": _LEG_CFG},
     ),
-    "orient": RewardTermCfg(func=flat_orientation_reward, weight=0.8, params={"std": 0.05}),
+    "orient": RewardTermCfg(
+      func=flat_orientation_reward, 
+      weight=0.1, 
+      params={"std": 0.05}),
+    
     "base_height": RewardTermCfg(
       func=base_height_l2,
       weight=0.2,

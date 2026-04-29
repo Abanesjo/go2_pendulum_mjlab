@@ -168,6 +168,16 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
       mode="reset",
       params={"asset_cfg": _PEND_CFG, "angle_range": preset["pendulum_reset"]},
     ),
+    "pendulum_damping": EventTermCfg(
+      mode="reset",
+      func=dr.joint_damping,
+      params={
+        "asset_cfg": _PEND_CFG,
+        "operation": "abs",
+        "ranges": (0.001, 0.05),
+        "shared_random": True,
+      },
+    ),
     "base_mass": EventTermCfg(
       mode="startup",
       func=dr.body_mass,
@@ -211,6 +221,7 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     events.pop("base_mass")
     events.pop("motor_gains")
     events.pop("encoder_bias")
+    events.pop("pendulum_damping")
 
   rewards = {
     "position_tracking": RewardTermCfg(

@@ -1,3 +1,4 @@
+README.md
 pyproject.toml
 src/go2_pendulum_mjlab/__init__.py
 src/go2_pendulum_mjlab.egg-info/PKG-INFO

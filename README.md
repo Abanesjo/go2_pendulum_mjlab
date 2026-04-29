@@ -53,18 +53,18 @@ Example from-scratch training command with all wrapper arguments shown:
 cd ~/Documents/mjlab_projects
 conda activate mujoco
 
-python go2_pendulum_mjlab/scripts/train.py \
+python scripts/train.py \
   --device cuda:0 \
   --resume-file None \
-  --video false \
+  --video True \
   --video-length 200 \
   --video-interval 2000 \
   --gpu-ids 0 \
   --env.scene.num-envs 4096 \
   --env.seed 42 \
   --agent.seed 42 \
-  --agent.max-iterations 1500 \
-  --agent.run-name scratch_go2_pendulum
+  --agent.max-iterations 25000 \
+  --agent.run-name finetune_v1
 ```
 
 ### `train.py` arguments
@@ -73,7 +73,7 @@ python go2_pendulum_mjlab/scripts/train.py \
 | --- | --- | --- |
 | `--device STR` | `None` | Force a device such as `cuda:0` or `cpu`. If omitted, the script uses CUDA when visible, otherwise CPU. |
 | `--resume-file STR` | `None` | Explicit checkpoint path to load before training. |
-| `--video {true,false}` | `false` | Enable MJLab offscreen video recording during training. |
+| `--video {True,False}` | `false` | Enable MJLab offscreen video recording during training. |
 | `--video-length INT` | `200` | Number of frames per recorded training video. |
 | `--video-interval INT` | `2000` | Start a new video every N environment steps. |
 | `--gpu-ids [INT,...]` | `[0]` | GPUs exposed through `CUDA_VISIBLE_DEVICES`. Use `None` for CPU or `all` for all visible GPUs. |
@@ -83,7 +83,7 @@ python go2_pendulum_mjlab/scripts/train.py \
 Set `--resume-file /path/to/model_1000.pt` to continue training from a checkpoint. To see the full generated list of nested `--env.*` and `--agent.*` options:
 
 ```bash
-python go2_pendulum_mjlab/scripts/train.py --help
+python scripts/train.py --help
 ```
 
 ## Play
@@ -94,7 +94,7 @@ Example playback/export command with all wrapper arguments shown:
 cd ~/Documents/mjlab_projects
 conda activate mujoco
 
-python go2_pendulum_mjlab/scripts/play.py \
+python scripts/play.py \
   --checkpoint-file /path/to/model_1000.pt \
   --agent trained \
   --num-envs 1 \
@@ -126,7 +126,7 @@ next to the checkpoint file.
 To show the generated play CLI:
 
 ```bash
-python go2_pendulum_mjlab/scripts/play.py --help
+python scripts/play.py --help
 ```
 
 ## Outputs

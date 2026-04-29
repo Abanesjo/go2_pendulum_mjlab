@@ -120,9 +120,9 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
 
   observations = {
     "policy": ObservationGroupCfg(
-      terms=_obs_terms(noisy=not play),
+      terms=_obs_terms(noisy=True),
       concatenate_terms=True,
-      enable_corruption=not play,
+      enable_corruption=True,
       nan_policy="sanitize",
     ),
     "critic": ObservationGroupCfg(
@@ -249,15 +249,15 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     ),
     "rew_action_rate": RewardTermCfg(
       func=action_rate_l2,
-      weight=-0.01 * (ACTION_SCALE**2),
+      weight=-0.1 * (ACTION_SCALE**2),
     ),
     "action_acc": RewardTermCfg(
       func=action_acc_l2,
-      weight=-0.01 * (ACTION_SCALE**2),
+      weight=-0.1 * (ACTION_SCALE**2),
     ),
     "torque": RewardTermCfg(
       func=joint_actuator_effort_l2,
-      weight=-0.0001,
+      weight=-0.0005,
       params={"asset_cfg": _LEG_CFG},
     ),
     "orient": RewardTermCfg(func=flat_orientation_reward, weight=0.8, params={"std": 0.05}),
@@ -453,6 +453,3 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     episode_length_s=10.0,
     scale_rewards_by_dt=False,
   )
-  joint_actuator_effort_l2,
-  lin_vel_z_l2,
-  ang_vel_xy_l2,

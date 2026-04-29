@@ -142,6 +142,7 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
       stiffness=25.0,
       damping=0.6,
       effort_limit=23.5,
+      action_delay_steps_range=(0, 2),
     )
   }
 

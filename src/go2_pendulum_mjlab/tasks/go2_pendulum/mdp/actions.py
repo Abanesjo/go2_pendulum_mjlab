@@ -25,6 +25,7 @@ class OrderedGo2PdActionCfg(ActionTermCfg):
   stiffness: float = 25.0
   damping: float = 0.6
   effort_limit: float = 23.5
+  action_delay_steps_range: tuple[int, int] = (0, 2)
 
   def build(self, env) -> "OrderedGo2PdAction":
     return OrderedGo2PdAction(self, env)
@@ -40,11 +41,27 @@ class OrderedGo2PdAction(ActionTerm):
     joint_ids, joint_names = self._entity.find_joints(cfg.joint_names, preserve_order=True)
     if tuple(joint_names) != tuple(cfg.joint_names):
       raise RuntimeError(f"Resolved joint order mismatch: {joint_names}")
+    min_delay, max_delay = cfg.action_delay_steps_range
+    if min_delay < 0 or max_delay < 0:
+      raise ValueError(f"action_delay_steps_range values must be non-negative, got {cfg.action_delay_steps_range}.")
+    if max_delay < min_delay:
+      raise ValueError(f"action_delay_steps_range max must be >= min, got {cfg.action_delay_steps_range}.")
+    self._min_action_delay_steps = int(min_delay)
+    self._max_action_delay_steps = int(max_delay)
     self._joint_ids = torch.tensor(joint_ids, device=self.device, dtype=torch.long)
     self._raw_actions = torch.zeros(self.num_envs, self.action_dim, device=self.device)
     self._target_pos = torch.tensor(cfg.default_joint_pos, device=self.device).repeat(self.num_envs, 1)
     self._default_pos = self._target_pos.clone()
     self._applied_action = torch.zeros_like(self._raw_actions)
+    self._action_delay_steps = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
+    self._action_delay_history = torch.zeros(
+      self.num_envs,
+      self.action_dim,
+      self._max_action_delay_steps + 1,
+      device=self.device,
+    )
+    self._all_env_ids = torch.arange(self.num_envs, device=self.device, dtype=torch.long)
+    self._sample_action_delay(self._all_env_ids)
     self._default_stiffness = torch.full(
       (self.num_envs, self.action_dim), cfg.stiffness, device=self.device
     )
@@ -67,6 +84,10 @@ class OrderedGo2PdAction(ActionTerm):
     return self._applied_action
 
   @property
+  def action_delay_steps(self) -> torch.Tensor:
+    return self._action_delay_steps
+
+  @property
   def joint_ids(self) -> torch.Tensor:
     return self._joint_ids
 
@@ -84,8 +105,12 @@ class OrderedGo2PdAction(ActionTerm):
 
   def process_actions(self, actions: torch.Tensor) -> None:
     self._raw_actions[:] = actions
-    self._applied_action[:] = actions
-    self._target_pos[:] = self._default_pos + self.cfg.action_scale * self._raw_actions
+    if self._action_delay_history.shape[-1] > 1:
+      self._action_delay_history[:, :, 1:] = self._action_delay_history[:, :, :-1].clone()
+    self._action_delay_history[:, :, 0] = actions
+    delay_ids = self._action_delay_steps.view(self.num_envs, 1, 1).expand(-1, self.action_dim, 1)
+    self._applied_action[:] = torch.gather(self._action_delay_history, dim=2, index=delay_ids).squeeze(-1)
+    self._target_pos[:] = self._default_pos + self.cfg.action_scale * self._applied_action
 
   def apply_actions(self) -> None:
     q = self._entity.data.joint_pos[:, self._joint_ids]
@@ -95,8 +120,28 @@ class OrderedGo2PdAction(ActionTerm):
     self._entity.set_joint_effort_target(torque, joint_ids=self._joint_ids)
 
   def reset(self, env_ids: torch.Tensor | slice | None = None) -> None:
-    if env_ids is None:
-      env_ids = slice(None)
+    env_ids = self._resolve_env_ids(env_ids)
     self._raw_actions[env_ids] = 0.0
     self._applied_action[env_ids] = 0.0
+    self._action_delay_history[env_ids] = 0.0
+    self._sample_action_delay(env_ids)
     self._target_pos[env_ids] = self._default_pos[env_ids]
+
+  def _resolve_env_ids(self, env_ids: torch.Tensor | slice | None) -> torch.Tensor:
+    if env_ids is None:
+      return self._all_env_ids
+    if isinstance(env_ids, slice):
+      return self._all_env_ids[env_ids]
+    return env_ids.to(device=self.device, dtype=torch.long)
+
+  def _sample_action_delay(self, env_ids: torch.Tensor) -> None:
+    if self._min_action_delay_steps == self._max_action_delay_steps:
+      self._action_delay_steps[env_ids] = self._min_action_delay_steps
+      return
+    self._action_delay_steps[env_ids] = torch.randint(
+      self._min_action_delay_steps,
+      self._max_action_delay_steps + 1,
+      (env_ids.numel(),),
+      device=self.device,
+      dtype=torch.long,
+    )

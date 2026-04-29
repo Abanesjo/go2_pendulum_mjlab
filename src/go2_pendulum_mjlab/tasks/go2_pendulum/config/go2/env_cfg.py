@@ -178,6 +178,14 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
         "shared_random": True,
       },
     ),
+    "pendulum_mass": EventTermCfg(
+      mode="reset",
+      func=dr.pseudo_inertia,
+      params={
+        "asset_cfg": SceneEntityCfg("robot", body_names=("pendulum_ee",)),
+        "alpha_range": (0.5 * math.log(0.5), 0.5 * math.log(3.0)),
+      },
+    ),
     "base_mass": EventTermCfg(
       mode="startup",
       func=dr.body_mass,
@@ -222,6 +230,7 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     events.pop("motor_gains")
     events.pop("encoder_bias")
     events.pop("pendulum_damping")
+    events.pop("pendulum_mass")
 
   rewards = {
     "position_tracking": RewardTermCfg(

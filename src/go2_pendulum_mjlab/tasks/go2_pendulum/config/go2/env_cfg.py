@@ -206,12 +206,22 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
         "kd_range": (0.9, 1.1),
       },
     ),
+    "foot_friction": EventTermCfg(
+      mode="startup",
+      func=dr.geom_friction,
+      params={
+        "asset_cfg": SceneEntityCfg("robot", geom_names=_FEET_GEOMS, preserve_order=True),
+        "operation": "abs",
+        "ranges": (0.3, 1.2),
+        "shared_random": True,
+      },
+    ),
     "encoder_bias": EventTermCfg(
       mode="startup",
       func=dr.encoder_bias,
       params={
         "asset_cfg": SceneEntityCfg("robot"),
-        "bias_range": (-math.radians(1.0), math.radians(1.0)),
+        "bias_range": (-0.015, 0.015),
       },
     ),
     "push_robot": EventTermCfg(
@@ -226,13 +236,6 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
       },
     ),
   }
-  if play:
-    events.pop("push_robot")
-    events.pop("base_mass")
-    events.pop("motor_gains")
-    events.pop("encoder_bias")
-    events.pop("pendulum_damping")
-    events.pop("pendulum_mass")
 
   rewards = {
     "position_tracking": RewardTermCfg(

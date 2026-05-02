@@ -274,7 +274,7 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     ),
     "rew_action_rate": RewardTermCfg(
       func=action_rate_l2,
-      weight=-0.2 * (ACTION_SCALE**2),
+      weight=-0.4 * (ACTION_SCALE**2),
     ),
     "action_acc": RewardTermCfg(
       func=action_acc_l2,
@@ -282,7 +282,7 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     ),
     "torque": RewardTermCfg(
       func=joint_actuator_effort_l2,
-      weight=-0.0005,
+      weight=-0.001,
       params={"asset_cfg": _LEG_CFG},
     ),
     "orient": RewardTermCfg(
@@ -296,7 +296,7 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
       params={"target_height": 0.33, "std": 0.1},
     ),
     "lin_vel_z": RewardTermCfg(func=lin_vel_z_l2, weight=-2.0),
-    "dof_vel": RewardTermCfg(func=env_mdp.joint_vel_l2, weight=-0.003, params={"asset_cfg": _LEG_CFG}),
+    "dof_vel": RewardTermCfg(func=env_mdp.joint_vel_l2, weight=-0.006, params={"asset_cfg": _LEG_CFG}),
     "dof_acc": RewardTermCfg(func=env_mdp.joint_acc_l2, weight=-2.5e-7, params={"asset_cfg": _LEG_CFG}),
     "ang_vel_xy": RewardTermCfg(func=ang_vel_xy_l2, weight=-0.01),
     "feet_clearance": RewardTermCfg(

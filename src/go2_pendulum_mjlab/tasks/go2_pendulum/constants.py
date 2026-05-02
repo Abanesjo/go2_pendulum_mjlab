@@ -100,7 +100,7 @@ DIFFICULTY_PRESETS: dict[int, dict[str, object]] = {
     pendulum_terminate_angle=math.radians(9.5),
     pendulum_terminate_duration=0.5,
     position_tolerance=0.2,
-    push_force_xy=(0.0, 0.0),
+    push_force_xy=(-10.0, 10.0),
   ),
 }
 

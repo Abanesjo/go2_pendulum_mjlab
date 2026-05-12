@@ -73,7 +73,7 @@ python scripts/train.py \
 | --- | --- | --- |
 | `--device STR` | `None` | Force a device such as `cuda:0` or `cpu`. If omitted, the script uses CUDA when visible, otherwise CPU. |
 | `--resume-file STR` | `None` | Explicit checkpoint path to load before training. |
-| `--video {True,False}` | `false` | Enable MJLab offscreen video recording during training. |
+| `--video {True,False}` | `False` | Enable MJLab offscreen video recording during training. |
 | `--video-length INT` | `200` | Number of frames per recorded training video. |
 | `--video-interval INT` | `2000` | Start a new video every N environment steps. |
 | `--gpu-ids [INT,...]` | `[0]` | GPUs exposed through `CUDA_VISIBLE_DEVICES`. Use `None` for CPU or `all` for all visible GPUs. |
@@ -100,10 +100,10 @@ python scripts/play.py \
   --num-envs 1 \
   --device cuda:0 \
   --viewer auto \
-  --export false
+  --export False
 ```
 
-Set `--agent zero` or `--agent random` for dummy policies. Set `--viewer native` or `--viewer viser` to force a viewer. Set `--export true` to write:
+Set `--agent zero` or `--agent random` for dummy policies. Set `--viewer native` or `--viewer viser` to force a viewer. Set `--export True` to write:
 
 ```text
 policy.pt
@@ -121,7 +121,7 @@ next to the checkpoint file.
 | `--num-envs INT` | `1` | Number of parallel play environments. |
 | `--device STR` | `None` | Force a device such as `cuda:0` or `cpu`. If omitted, the script uses CUDA when available. |
 | `--viewer STR` | `auto` | Viewer backend. Supported values are `auto`, `native`, and `viser`. |
-| `--export {true,false}` | `false` | Export `policy.pt` and `policy.onnx`, then exit. |
+| `--export {True,False}` | `False` | Export `policy.pt` and `policy.onnx`, then exit. |
 
 To show the generated play CLI:
 

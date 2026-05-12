@@ -226,7 +226,7 @@
             <joint name="pendulum_joint2" type="hinge" axis="0 1 0" range="-0.174532925 0.174532925"
                    damping="0.01" armature="0" frictionloss="0" solreflimit="0.005 1" solimplimit="0.99 0.999 0.001 0.5 2"/>
             <geom name="pendulum_rod" type="cylinder" fromto="0 0 0 0 0 1.0"
-                  size="0.01" rgba="1.0 0.5 0.0 1" mass="0.1"/>
+                  size="0.01" rgba="1.0 0.5 0.0 1" mass="0.1" contype="0" conaffinity="0"/>
             <body name="pendulum_ee" pos="0 0 1.0">
               <geom name="pendulum_ball" type="sphere" size="0.05" rgba="0 0 1 1" mass="1.0"/>
             </body>

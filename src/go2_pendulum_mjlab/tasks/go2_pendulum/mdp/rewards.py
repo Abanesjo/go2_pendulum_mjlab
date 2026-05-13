@@ -139,7 +139,7 @@ def action_acc_l2(env) -> torch.Tensor:
 
 def joint_actuator_effort_l2(env, asset_cfg: SceneEntityCfg) -> torch.Tensor:
   asset: Entity = env.scene[asset_cfg.name]
-  return torch.sum(torch.square(asset.data.qfrc_actuator[:, asset_cfg.joint_ids]), dim=1)
+  return torch.sum(torch.square(asset.data.joint_effort_target[:, asset_cfg.joint_ids]), dim=1)
 
 
 def flat_orientation_reward(env, std: float, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:

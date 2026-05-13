@@ -6,7 +6,7 @@ from pathlib import Path
 
 import mujoco
 
-from mjlab.actuator import XmlActuatorCfg
+from mjlab.actuator import XmlMotorActuatorCfg
 from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
 
 from go2_pendulum_mjlab.tasks.go2_pendulum.constants import DEFAULT_JOINT_POS, LEG_JOINT_NAMES
@@ -35,12 +35,10 @@ INIT_STATE = EntityCfg.InitialStateCfg(
 
 GO2_ARTICULATION = EntityArticulationInfoCfg(
   actuators=(
-    XmlActuatorCfg(
+    XmlMotorActuatorCfg(
       target_names_expr=LEG_JOINT_NAMES,
-      command_field="effort",
       armature=0.0,
       frictionloss=0.0,
-      viscous_damping=0.0,
     ),
   ),
   soft_joint_pos_limit_factor=0.9,

@@ -10,6 +10,8 @@ from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.sensor import BuiltinSensor
 from mjlab.utils.lab_api.math import euler_xyz_from_quat, quat_apply_inverse, quat_mul, wrap_to_pi
 
+from go2_pendulum_mjlab.tasks.go2_pendulum.mdp.realism import UnitreeRealismSensor
+
 
 def _asset(env, asset_cfg: SceneEntityCfg) -> Entity:
   return env.scene[asset_cfg.name]
@@ -48,6 +50,10 @@ def imu_ang_vel_b(env, sensor_name: str = "robot/imu_gyro") -> torch.Tensor:
   return sensor.data
 
 
+def clean_base_ang_vel_b(env, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+  return _asset(env, asset_cfg).data.root_link_ang_vel_b
+
+
 def projected_gravity_from_imu(env, sensor_name: str = "robot/imu_quat") -> torch.Tensor:
   sensor = env.scene[sensor_name]
   assert isinstance(sensor, BuiltinSensor)
@@ -71,8 +77,89 @@ def joint_vel(env, asset_cfg: SceneEntityCfg) -> torch.Tensor:
   return _asset(env, asset_cfg).data.joint_vel[:, asset_cfg.joint_ids]
 
 
-def raw_last_action(env) -> torch.Tensor:
+def raw_last_action(env, action_name: str = "joint_pos") -> torch.Tensor:
+  try:
+    term = env.action_manager.get_term(action_name)
+  except (AttributeError, KeyError):
+    return env.action_manager.action
+  if hasattr(term, "applied_action"):
+    return term.applied_action
   return env.action_manager.action
+
+
+def _unitree_sensor(env, sensor_name: str) -> UnitreeRealismSensor:
+  sensor = env.scene[sensor_name]
+  assert isinstance(sensor, UnitreeRealismSensor)
+  return sensor
+
+
+class unitree_base_lin_vel_b:
+  """Control-rate finite difference of the noisy/delayed Unitree base pose."""
+
+  def __init__(self, cfg: ObservationTermCfg, env):
+    sensor_name = cfg.params.get("sensor_name", "unitree_realism")
+    self._sensor_name = sensor_name
+    self._prev_pos_w = torch.zeros(env.num_envs, 3, device=env.device)
+    self._has_prev = torch.zeros(env.num_envs, device=env.device, dtype=torch.bool)
+
+  def __call__(self, env, sensor_name: str = "unitree_realism") -> torch.Tensor:
+    sensor = _unitree_sensor(env, sensor_name)
+    data = sensor.data
+    pos_w = data.base_pos_w.clone()
+    vel_w = torch.zeros_like(pos_w)
+    valid = self._has_prev
+    if torch.any(valid):
+      vel_w[valid] = (pos_w[valid] - self._prev_pos_w[valid]) / env.step_dt
+    self._prev_pos_w[:] = pos_w
+    self._has_prev[:] = True
+    return quat_apply_inverse(data.base_quat_w, vel_w)
+
+  def reset(self, env_ids: torch.Tensor | slice | None = None) -> None:
+    if env_ids is None:
+      env_ids = slice(None)
+    self._has_prev[env_ids] = False
+
+
+def unitree_imu_ang_vel_b(env, sensor_name: str = "unitree_realism") -> torch.Tensor:
+  return _unitree_sensor(env, sensor_name).data.imu_ang_vel_b
+
+
+def unitree_projected_gravity_b(env, sensor_name: str = "unitree_realism") -> torch.Tensor:
+  return _unitree_sensor(env, sensor_name).data.projected_gravity_b
+
+
+def unitree_goal_error_b(env, sensor_name: str = "unitree_realism", command_name: str = "position_goal") -> torch.Tensor:
+  data = _unitree_sensor(env, sensor_name).data
+  command = env.command_manager.get_term(command_name)
+  if not hasattr(command, "target_pos_w") or not hasattr(command, "target_yaw_w"):
+    existing = env.command_manager.get_command(command_name)
+    assert existing is not None
+    return existing
+  return clean_goal_error_from_pose(
+    env,
+    command.target_pos_w,
+    command.target_yaw_w,
+    data.base_pos_w,
+    data.base_quat_w,
+  )
+
+
+def unitree_leg_joint_pos_rel(env, sensor_name: str = "unitree_realism") -> torch.Tensor:
+  return _unitree_sensor(env, sensor_name).data.leg_joint_pos_rel
+
+
+def unitree_leg_joint_vel(env, sensor_name: str = "unitree_realism") -> torch.Tensor:
+  return _unitree_sensor(env, sensor_name).data.leg_joint_vel
+
+
+def unitree_pendulum_pos(env, sensor_name: str = "unitree_realism", clean: bool = False) -> torch.Tensor:
+  data = _unitree_sensor(env, sensor_name).data
+  return data.clean_pendulum_pos if clean else data.pendulum_pos
+
+
+def unitree_pendulum_vel(env, sensor_name: str = "unitree_realism", clean: bool = False) -> torch.Tensor:
+  data = _unitree_sensor(env, sensor_name).data
+  return data.clean_pendulum_vel if clean else data.pendulum_vel
 
 
 def clock_inputs(env) -> torch.Tensor:
@@ -120,4 +207,3 @@ def clean_goal_error_from_pose(env, target_xy: torch.Tensor, target_yaw: torch.T
     ),
     dim=-1,
   )
-

@@ -19,7 +19,6 @@ from mjlab.scene import SceneCfg
 from mjlab.sensor import ContactMatch, ContactSensorCfg
 from mjlab.sim import MujocoCfg, SimulationCfg
 from mjlab.terrains import TerrainEntityCfg
-from mjlab.utils.noise import UniformNoiseCfg as Unoise
 from mjlab.viewer import ViewerConfig
 
 from go2_pendulum_mjlab.tasks.go2_pendulum.constants import (
@@ -32,6 +31,8 @@ from go2_pendulum_mjlab.tasks.go2_pendulum.constants import (
 from go2_pendulum_mjlab.tasks.go2_pendulum.mdp import (
   OrderedGo2PdActionCfg,
   PositionGoalCommandCfg,
+  UNITREE_REALISM,
+  UnitreeRealismSensorCfg,
   action_acc_l2,
   action_l2,
   action_rate_l2,
@@ -40,13 +41,13 @@ from go2_pendulum_mjlab.tasks.go2_pendulum.mdp import (
   base_height_l2,
   body_contact_force,
   clock_inputs,
+  clean_base_ang_vel_b,
   early_termination,
   feet_air_time,
   feet_clearance,
   flat_orientation_reward,
   finite_diff_base_lin_vel_b,
   goal_error_b,
-  imu_ang_vel_b,
   isaac_difficulty,
   joint_actuator_effort_l2,
   joint_pos_rel,
@@ -60,55 +61,102 @@ from go2_pendulum_mjlab.tasks.go2_pendulum.mdp import (
   progress,
   projected_gravity_from_imu,
   raw_last_action,
-  randomize_ordered_pd_gains,
   reset_pendulum_by_sign_magnitude,
   set_pendulum_joint_limits,
   sustained,
   tracking_contacts_shaped_force,
+  unitree_base_lin_vel_b,
+  unitree_goal_error_b,
+  unitree_imu_ang_vel_b,
+  unitree_leg_joint_pos_rel,
+  unitree_leg_joint_vel,
+  unitree_pendulum_pos,
+  unitree_pendulum_vel,
+  unitree_projected_gravity_b,
   undesired_contacts,
   yaw_alignment,
 )
 from go2_pendulum_mjlab.tasks.go2_pendulum.robot_cfg import get_go2_pendulum_robot_cfg
 
-_LEG_CFG = SceneEntityCfg("robot", joint_names=LEG_JOINT_NAMES, preserve_order=True)
-_PEND_CFG = SceneEntityCfg("robot", joint_names=PENDULUM_JOINT_NAMES, preserve_order=True)
 _FEET_GEOMS = ("FL", "FR", "RL", "RR")
 _FEET_BODIES = ("FL_foot", "FR_foot", "RL_foot", "RR_foot")
 _THIGH_BODIES = ("FL_thigh", "FR_thigh", "RL_thigh", "RR_thigh")
+_UNITREE_SENSOR_NAME = "unitree_realism"
+
+
+def _leg_cfg() -> SceneEntityCfg:
+  return SceneEntityCfg("robot", joint_names=list(LEG_JOINT_NAMES), preserve_order=True)
+
+
+def _pend_cfg() -> SceneEntityCfg:
+  return SceneEntityCfg("robot", joint_names=list(PENDULUM_JOINT_NAMES), preserve_order=True)
 
 
 def _obs_terms(noisy: bool) -> dict[str, ObservationTermCfg]:
+  if noisy:
+    return {
+      "base_lin_vel_b": ObservationTermCfg(
+        func=unitree_base_lin_vel_b,
+        params={"sensor_name": _UNITREE_SENSOR_NAME},
+      ),
+      "base_ang_vel_b": ObservationTermCfg(
+        func=unitree_imu_ang_vel_b,
+        params={"sensor_name": _UNITREE_SENSOR_NAME},
+      ),
+      "projected_gravity_b": ObservationTermCfg(
+        func=unitree_projected_gravity_b,
+        params={"sensor_name": _UNITREE_SENSOR_NAME},
+      ),
+      "goal_error_b": ObservationTermCfg(
+        func=unitree_goal_error_b,
+        params={"sensor_name": _UNITREE_SENSOR_NAME, "command_name": "position_goal"},
+      ),
+      "leg_joint_pos_rel": ObservationTermCfg(
+        func=unitree_leg_joint_pos_rel,
+        params={"sensor_name": _UNITREE_SENSOR_NAME},
+      ),
+      "leg_joint_vel": ObservationTermCfg(
+        func=unitree_leg_joint_vel,
+        params={"sensor_name": _UNITREE_SENSOR_NAME},
+      ),
+      "pendulum_pos": ObservationTermCfg(
+        func=unitree_pendulum_pos,
+        params={"sensor_name": _UNITREE_SENSOR_NAME, "clean": False},
+      ),
+      "pendulum_vel": ObservationTermCfg(
+        func=unitree_pendulum_vel,
+        params={"sensor_name": _UNITREE_SENSOR_NAME, "clean": False},
+      ),
+      "last_action": ObservationTermCfg(func=raw_last_action),
+      "clock_inputs": ObservationTermCfg(func=clock_inputs),
+    }
+
   return {
     "base_lin_vel_b": ObservationTermCfg(
       func=finite_diff_base_lin_vel_b,
       params={"asset_cfg": SceneEntityCfg("robot")},
-      noise=Unoise(n_min=-0.02, n_max=0.02) if noisy else None,
     ),
     "base_ang_vel_b": ObservationTermCfg(
-      func=imu_ang_vel_b,
-      noise=Unoise(n_min=-0.2, n_max=0.2) if noisy else None,
+      func=clean_base_ang_vel_b,
+      params={"asset_cfg": SceneEntityCfg("robot")},
     ),
     "projected_gravity_b": ObservationTermCfg(func=projected_gravity_from_imu),
     "goal_error_b": ObservationTermCfg(func=goal_error_b),
     "leg_joint_pos_rel": ObservationTermCfg(
       func=joint_pos_rel,
-      params={"asset_cfg": _LEG_CFG},
-      noise=Unoise(n_min=-math.radians(1.0), n_max=math.radians(1.0)) if noisy else None,
+      params={"asset_cfg": _leg_cfg()},
     ),
     "leg_joint_vel": ObservationTermCfg(
       func=joint_vel,
-      params={"asset_cfg": _LEG_CFG},
-      noise=Unoise(n_min=-math.radians(5.0), n_max=math.radians(5.0)) if noisy else None,
+      params={"asset_cfg": _leg_cfg()},
     ),
     "pendulum_pos": ObservationTermCfg(
-      func=joint_pos_rel,
-      params={"asset_cfg": _PEND_CFG},
-      noise=Unoise(n_min=-math.radians(0.5), n_max=math.radians(0.5)) if noisy else None,
+      func=unitree_pendulum_pos,
+      params={"sensor_name": _UNITREE_SENSOR_NAME, "clean": True},
     ),
     "pendulum_vel": ObservationTermCfg(
-      func=joint_vel,
-      params={"asset_cfg": _PEND_CFG},
-      noise=Unoise(n_min=-math.radians(2.0), n_max=math.radians(2.0)) if noisy else None,
+      func=unitree_pendulum_vel,
+      params={"sensor_name": _UNITREE_SENSOR_NAME, "clean": True},
     ),
     "last_action": ObservationTermCfg(func=raw_last_action),
     "clock_inputs": ObservationTermCfg(func=clock_inputs),
@@ -122,7 +170,7 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     "policy": ObservationGroupCfg(
       terms=_obs_terms(noisy=True),
       concatenate_terms=True,
-      enable_corruption=True,
+      enable_corruption=False,
       nan_policy="sanitize",
     ),
     "critic": ObservationGroupCfg(
@@ -141,8 +189,7 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
       action_scale=ACTION_SCALE,
       stiffness=25.0,
       damping=0.6,
-      effort_limit=23.5,
-      action_delay_steps_range=(0, 2),
+      realism=UNITREE_REALISM.actuator,
     )
   }
 
@@ -162,48 +209,21 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     "pendulum_limits": EventTermCfg(
       func=set_pendulum_joint_limits,
       mode="reset",
-      params={"asset_cfg": _PEND_CFG, "limit_range": preset["pendulum_limits"]},
+      params={"asset_cfg": _pend_cfg(), "limit_range": preset["pendulum_limits"]},
     ),
     "reset_pendulum": EventTermCfg(
       func=reset_pendulum_by_sign_magnitude,
       mode="reset",
-      params={"asset_cfg": _PEND_CFG, "angle_range": preset["pendulum_reset"]},
+      params={"asset_cfg": _pend_cfg(), "angle_range": preset["pendulum_reset"]},
     ),
     "pendulum_damping": EventTermCfg(
       mode="reset",
       func=dr.joint_damping,
       params={
-        "asset_cfg": _PEND_CFG,
+        "asset_cfg": _pend_cfg(),
         "operation": "abs",
         "ranges": (0.001, 0.05),
         "shared_random": True,
-      },
-    ),
-    "pendulum_mass": EventTermCfg(
-      mode="startup",
-      func=dr.body_mass,
-      params={
-        "asset_cfg": SceneEntityCfg("robot", body_names=("pendulum_ee",)),
-        "operation": "scale",
-        "ranges": (0.5, 3.0),
-      },
-    ),
-    "base_mass": EventTermCfg(
-      mode="startup",
-      func=dr.body_mass,
-      params={
-        "asset_cfg": SceneEntityCfg("robot", body_names=("base_link",)),
-        "operation": "scale",
-        "ranges": (0.9, 1.2),
-      },
-    ),
-    "motor_gains": EventTermCfg(
-      mode="reset",
-      func=randomize_ordered_pd_gains,
-      params={
-        "action_name": "joint_pos",
-        "kp_range": (0.9, 1.1),
-        "kd_range": (0.9, 1.1),
       },
     ),
     "foot_friction": EventTermCfg(
@@ -212,16 +232,13 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
       params={
         "asset_cfg": SceneEntityCfg("robot", geom_names=_FEET_GEOMS, preserve_order=True),
         "operation": "abs",
-        "ranges": (0.3, 1.2),
+        "ranges": {
+          0: (UNITREE_REALISM.contact.foot_friction[0], UNITREE_REALISM.contact.foot_friction[0]),
+          1: (UNITREE_REALISM.contact.foot_friction[1], UNITREE_REALISM.contact.foot_friction[1]),
+          2: (UNITREE_REALISM.contact.foot_friction[2], UNITREE_REALISM.contact.foot_friction[2]),
+        },
+        "axes": [0, 1, 2],
         "shared_random": True,
-      },
-    ),
-    "encoder_bias": EventTermCfg(
-      mode="startup",
-      func=dr.encoder_bias,
-      params={
-        "asset_cfg": SceneEntityCfg("robot"),
-        "bias_range": (-0.015, 0.015),
       },
     ),
     "push_robot": EventTermCfg(
@@ -256,17 +273,17 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     "pendulum_upright": RewardTermCfg(
       func=pendulum_upright,
       weight=0.45,
-      params={"asset_cfg": _PEND_CFG, "std": 0.15},
+      params={"asset_cfg": _pend_cfg(), "std": 0.15},
     ),
     "pendulum_velocity": RewardTermCfg(
       func=pendulum_velocity_l2,
       weight=-0.1,
-      params={"asset_cfg": _PEND_CFG},
+      params={"asset_cfg": _pend_cfg()},
     ),
     "balanced_movement": RewardTermCfg(
       func=balanced_movement,
       weight=0.1,
-      params={"asset_cfg": _PEND_CFG},
+      params={"asset_cfg": _pend_cfg()},
     ),
     "action_magnitude": RewardTermCfg(
       func=action_l2,
@@ -283,7 +300,7 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     "torque": RewardTermCfg(
       func=joint_actuator_effort_l2,
       weight=-0.001,
-      params={"asset_cfg": _LEG_CFG},
+      params={"asset_cfg": _leg_cfg()},
     ),
     "orient": RewardTermCfg(
       func=flat_orientation_reward, 
@@ -296,8 +313,8 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
       params={"target_height": 0.33, "std": 0.1},
     ),
     "lin_vel_z": RewardTermCfg(func=lin_vel_z_l2, weight=-2.0),
-    "dof_vel": RewardTermCfg(func=env_mdp.joint_vel_l2, weight=-0.006, params={"asset_cfg": _LEG_CFG}),
-    "dof_acc": RewardTermCfg(func=env_mdp.joint_acc_l2, weight=-2.5e-7, params={"asset_cfg": _LEG_CFG}),
+    "dof_vel": RewardTermCfg(func=env_mdp.joint_vel_l2, weight=-0.006, params={"asset_cfg": _leg_cfg()}),
+    "dof_acc": RewardTermCfg(func=env_mdp.joint_acc_l2, weight=-2.5e-7, params={"asset_cfg": _leg_cfg()}),
     "ang_vel_xy": RewardTermCfg(func=ang_vel_xy_l2, weight=-0.01),
     "feet_clearance": RewardTermCfg(
       func=feet_clearance,
@@ -359,7 +376,7 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     "pendulum_fallen": TerminationTermCfg(
       func=sustained,
       params={
-        "inner": {"func": pendulum_fallen, "params": {"asset_cfg": _PEND_CFG, "angle_rad": preset["pendulum_terminate_angle"]}},
+        "inner": {"func": pendulum_fallen, "params": {"asset_cfg": _pend_cfg(), "angle_rad": preset["pendulum_terminate_angle"]}},
         "duration_s": preset["pendulum_terminate_duration"],
         "grace_period_s": 3.0,
       },
@@ -407,6 +424,13 @@ def go2_pendulum_mjlab_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     }
 
   sensors = (
+    UnitreeRealismSensorCfg(
+      name=_UNITREE_SENSOR_NAME,
+      asset_name="robot",
+      leg_joint_names=LEG_JOINT_NAMES,
+      pendulum_ee_body_name="pendulum_ee",
+      realism=UNITREE_REALISM,
+    ),
     ContactSensorCfg(
       name="feet_ground_contact",
       primary=ContactMatch(mode="geom", pattern=_FEET_GEOMS, entity="robot"),

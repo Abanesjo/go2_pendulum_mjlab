@@ -38,5 +38,8 @@ src/go2_pendulum_mjlab/tasks/go2_pendulum/mdp/curriculum.py
 src/go2_pendulum_mjlab/tasks/go2_pendulum/mdp/events.py
 src/go2_pendulum_mjlab/tasks/go2_pendulum/mdp/gait.py
 src/go2_pendulum_mjlab/tasks/go2_pendulum/mdp/observations.py
+src/go2_pendulum_mjlab/tasks/go2_pendulum/mdp/realism.py
 src/go2_pendulum_mjlab/tasks/go2_pendulum/mdp/rewards.py
 src/go2_pendulum_mjlab/tasks/go2_pendulum/mdp/terminations.py
+tests/test_unitree_actions.py
+tests/test_unitree_realism.py

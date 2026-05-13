@@ -9,10 +9,20 @@ from mjlab.managers.termination_manager import TerminationTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.sensor import ContactSensor
 
+from go2_pendulum_mjlab.tasks.go2_pendulum.mdp.realism import UnitreeRealismSensor
+
 
 def pendulum_fallen(env, asset_cfg: SceneEntityCfg, angle_rad: float) -> torch.Tensor:
-  asset: Entity = env.scene[asset_cfg.name]
-  return torch.linalg.vector_norm(asset.data.joint_pos[:, asset_cfg.joint_ids], dim=-1) > angle_rad
+  try:
+    sensor = env.scene["unitree_realism"]
+  except KeyError:
+    sensor = None
+  if isinstance(sensor, UnitreeRealismSensor):
+    pend_pos = sensor.data.clean_pendulum_pos
+  else:
+    asset: Entity = env.scene[asset_cfg.name]
+    pend_pos = asset.data.joint_pos[:, asset_cfg.joint_ids]
+  return torch.linalg.vector_norm(pend_pos, dim=-1) > angle_rad
 
 
 def position_goal_violation(env, command_name: str, max_dist: float) -> torch.Tensor:
@@ -50,4 +60,3 @@ class sustained:
     if env_ids is None:
       env_ids = slice(None)
     self._hold_count[env_ids] = 0
-

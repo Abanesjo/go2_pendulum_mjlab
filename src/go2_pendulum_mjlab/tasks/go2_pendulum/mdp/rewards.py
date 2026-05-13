@@ -10,6 +10,7 @@ from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.sensor import ContactSensor
 
 from go2_pendulum_mjlab.tasks.go2_pendulum.mdp.gait import desired_contact_states, foot_phases, swing_phase_profile
+from go2_pendulum_mjlab.tasks.go2_pendulum.mdp.realism import UnitreeRealismSensor
 
 
 def position_tracking(env, command_name: str, std: float) -> torch.Tensor:
@@ -22,6 +23,18 @@ def yaw_alignment(env, command_name: str, std: float) -> torch.Tensor:
   command = env.command_manager.get_command(command_name)
   assert command is not None
   return torch.exp(-torch.square(command[:, 2]) / (std * std))
+
+
+def _clean_pendulum_state(env, asset_cfg: SceneEntityCfg) -> tuple[torch.Tensor, torch.Tensor]:
+  try:
+    sensor = env.scene["unitree_realism"]
+  except KeyError:
+    sensor = None
+  if isinstance(sensor, UnitreeRealismSensor):
+    data = sensor.data
+    return data.clean_pendulum_pos, data.clean_pendulum_vel
+  asset: Entity = env.scene[asset_cfg.name]
+  return asset.data.joint_pos[:, asset_cfg.joint_ids], asset.data.joint_vel[:, asset_cfg.joint_ids]
 
 
 class progress:
@@ -48,19 +61,19 @@ class progress:
 
 
 def pendulum_upright(env, asset_cfg: SceneEntityCfg, std: float) -> torch.Tensor:
-  asset: Entity = env.scene[asset_cfg.name]
-  error = torch.sum(torch.square(asset.data.joint_pos[:, asset_cfg.joint_ids]), dim=1)
+  pend_pos, _ = _clean_pendulum_state(env, asset_cfg)
+  error = torch.sum(torch.square(pend_pos), dim=1)
   return torch.exp(-error / std)
 
 
 def pendulum_velocity_l2(env, asset_cfg: SceneEntityCfg) -> torch.Tensor:
-  asset: Entity = env.scene[asset_cfg.name]
-  return torch.sum(torch.square(asset.data.joint_vel[:, asset_cfg.joint_ids]), dim=1)
+  _, pend_vel = _clean_pendulum_state(env, asset_cfg)
+  return torch.sum(torch.square(pend_vel), dim=1)
 
 
 def balanced_movement(env, asset_cfg: SceneEntityCfg) -> torch.Tensor:
   asset: Entity = env.scene[asset_cfg.name]
-  pend_pos = asset.data.joint_pos[:, asset_cfg.joint_ids]
+  pend_pos, _ = _clean_pendulum_state(env, asset_cfg)
   pend_err = torch.sum(torch.square(pend_pos), dim=1)
   base_speed = torch.linalg.vector_norm(asset.data.root_link_lin_vel_w[:, :2], dim=-1)
   return torch.exp(-pend_err) * base_speed
